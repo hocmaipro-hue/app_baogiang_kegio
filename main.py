@@ -99,28 +99,21 @@ def main():
                         st.warning("Vui lòng nhập đầy đủ mã giáo viên và mật khẩu!")
                     else:
                         try:
-                            # Gọi hàm xác thực
-                            session = authenticate_user(magv, matkhau)
-                            if session:
-                                st.session_state.session_data = session
+                            user_session = authenticate_user(magv, matkhau)
+                            if user_session:
+                                st.session_state.session_data = user_session
+                                st.session_state.logged_in = True
                                 st.session_state.show_greeting = True
                                 st.rerun()
                             else:
-                                st.error("❌ Sai Mã Giáo Viên hoặc Mật khẩu! (Hoặc chưa có tài khoản này trong CSDL)")
+                                st.error("❌ Sai Mã Giáo Viên hoặc Mật khẩu!")
                         except Exception as e:
-                            # Hiển thị chính xác lỗi kết nối hoặc lỗi CSDL ra màn hình web
-                            st.error(f"❌ Chi tiết lỗi hệ thống: {str(e)}")
-                    if session:
-                        st.session_state.session_data = session
-                        st.session_state.show_greeting = True
-                        st.rerun()
-                    else:
-                        st.error("Sai tài khoản/mật khẩu hoặc CSDL chưa có dữ liệu giáo viên!")
+                            st.error(f"❌ Lỗi hệ thống: {str(e)}")
         return
 
     # 2. HIỆN THIỆP THƠ AN YÊN SAU KHI ĐĂNG NHẬP THÀNH CÔNG
-    session = st.session_state.session_data
-    tengv = session.get("tengv", "Thầy/Cô")
+    current_session = st.session_state.session_data
+    tengv = current_session.get("tengv", "Thầy/Cô") if current_session else "Thầy/Cô"
     
     if st.session_state.show_greeting:
         hien_thiep_an_yen(tengv)
@@ -132,10 +125,10 @@ def main():
         return
 
     # 3. GIAO DIỆN CHÍNH DỰA TRÊN VAI TRÒ (ROLE)
-    role = session.get("role")
+    role = current_session.get("role") if current_session else "GV"
     
     st.sidebar.title("Hệ Thống Báo Giảng")
-    st.sidebar.write(f"**GV:** {session.get('tengv')} ({session.get('magv', '')})")
+    st.sidebar.write(f"**GV:** {current_session.get('tengv')} ({current_session.get('magv', '')})")
     st.sidebar.write(f"**Vai trò:** {role}")
     if st.sidebar.button("Đăng xuất", use_container_width=True):
         st.session_state.logged_in = False
@@ -149,7 +142,7 @@ def main():
         st.title("🌟 Bảng Điều Khiển Tổ Trưởng Chuyên Môn")
         try:
             from ui_to_truong_dashboard import run_to_truong_dashboard
-            run_to_truong_dashboard(session)
+            run_to_truong_dashboard(current_session)
         except ImportError:
             st.info("Đang ở chế độ Tổ trưởng. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
             
@@ -157,7 +150,7 @@ def main():
         st.title("⚙️ Bảng Điều Khiển Quản Trị Viên (Admin)")
         try:
             from ui_admin import run_admin_dashboard
-            run_admin_dashboard(session)
+            run_admin_dashboard(current_session)
         except ImportError:
             st.info("Đang ở chế độ Admin. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
             
@@ -165,7 +158,7 @@ def main():
         st.title("📖 Sổ Báo Giảng Giáo Viên")
         try:
             from ui_main import run_main_dashboard
-            run_main_dashboard(session)
+            run_main_dashboard(current_session)
         except ImportError:
             st.info("Đang ở chế độ Giáo viên. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
 
