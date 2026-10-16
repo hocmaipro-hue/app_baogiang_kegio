@@ -95,12 +95,21 @@ def main():
                 submit_btn = st.form_submit_button("Đăng nhập", use_container_width=True)
                 
                 if submit_btn:
-                    try:
-                        session = authenticate_user(magv, matkhau)
-                    except Exception as e:
-                        session = None
-                        st.error(f"Lỗi kết nối CSDL: {e}")
-                    
+                    if not magv or not matkhau:
+                        st.warning("Vui lòng nhập đầy đủ mã giáo viên và mật khẩu!")
+                    else:
+                        try:
+                            # Gọi hàm xác thực
+                            session = authenticate_user(magv, matkhau)
+                            if session:
+                                st.session_state.session_data = session
+                                st.session_state.show_greeting = True
+                                st.rerun()
+                            else:
+                                st.error("❌ Sai Mã Giáo Viên hoặc Mật khẩu! (Hoặc chưa có tài khoản này trong CSDL)")
+                        except Exception as e:
+                            # Hiển thị chính xác lỗi kết nối hoặc lỗi CSDL ra màn hình web
+                            st.error(f"❌ Chi tiết lỗi hệ thống: {str(e)}")
                     if session:
                         st.session_state.session_data = session
                         st.session_state.show_greeting = True
