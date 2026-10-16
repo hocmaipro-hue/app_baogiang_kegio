@@ -1,11 +1,12 @@
-# auth.py
 import psycopg2
 from config import DB_URI
 
 def authenticate_user(magv, matkhau):
     """Xác thực đăng nhập trả về session dictionary"""
+    connection = None
     try:
-        connection = psycopg2.connect(DB_URI)
+        # Thêm sslmode='require' bắt buộc cho Supabase trên cloud
+        connection = psycopg2.connect(DB_URI, sslmode='require')
         cursor = connection.cursor()
         query = "SELECT magv, tengv, role, to_bo_mon, chuc_vu FROM giao_vien WHERE magv = %s AND matkhau = %s"
         cursor.execute(query, (magv, matkhau))
@@ -21,10 +22,10 @@ def authenticate_user(magv, matkhau):
             }
         return None
     except Exception as e:
-        print(f"Lỗi đăng nhập: {e}")
-        return None
+        # Ném lỗi trực tiếp ra ngoài để hiển thị lên giao diện web cho thầy thấy
+        raise Exception(f"Lỗi kết nối CSDL: {str(e)}")
     finally:
-        if 'connection' in locals() and connection:
+        if connection:
             connection.close()
 
 def has_permission(current_session, required_role):
