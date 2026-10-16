@@ -1,5 +1,5 @@
 import streamlit as st
-import services  # Module chứa hàm xác thực xac_thuc_dang_nhap
+from auth import authenticate_user  # Gọi trực tiếp hàm xác thực từ file auth.py của bạn
 
 # Cấu hình trang Streamlit
 st.set_page_config(
@@ -10,7 +10,7 @@ st.set_page_config(
 
 
 def hien_thiep_an_yen(tengv):
-  """Hiển thị thiệp thơ an yên, màu sắc phong cảnh hữu tình, thư thái trên giao diện web"""
+  """Hiển thị thiệp thơ an yên, màu sắc phong cảnh hữu tình, thư thái trên web"""
   st.markdown(
       """
         <style>
@@ -83,7 +83,7 @@ def hien_thiep_an_yen(tengv):
 
 
 def main():
-  # Khởi tạo trạng thái phiên làm việc (Session State)
+  # Khởi tạo Session State
   if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
   if "session_data" not in st.session_state:
@@ -115,12 +115,13 @@ def main():
 
         if submit_btn:
           try:
-            user = services.xac_thuc_dang_nhap(magv, matkhau)
+            # Gọi hàm xác thực chuẩn từ auth.py
+            session = authenticate_user(magv, matkhau)
           except Exception:
-            user = None
+            session = None
 
-          if user:
-            st.session_state.session_data = user
+          if session:
+            st.session_state.session_data = session
             st.session_state.show_greeting = True
             st.rerun()
           else:
@@ -129,7 +130,7 @@ def main():
             )
     return
 
-  # 2. HIỂN THỊ THIỆP THƠ AN YÊN SAU KHI ĐĂNG NHẬP THÀNH CÔNG
+  # 2. HIỆN THIỆP THƠ AN YÊN SAU KHI ĐĂNG NHẬP THÀNH CÔNG
   session = st.session_state.session_data
   tengv = session.get("tengv", "Thầy/Cô")
 
@@ -172,8 +173,8 @@ def main():
       run_to_truong_dashboard(session)
     except ImportError:
       st.info(
-          "Đang ở chế độ Tổ trưởng. Vui lòng chuyển đổi các file UI phụ sang"
-          " Streamlit nếu chưa cập nhật."
+          "Đang ở chế độ Tổ trưởng. Giao diện chức năng đang được chuyển đổi"
+          " sang Streamlit."
       )
 
   elif role == "ADMIN":
@@ -184,8 +185,8 @@ def main():
       run_admin_dashboard(session)
     except ImportError:
       st.info(
-          "Đang ở chế độ Admin. Vui lòng chuyển đổi các file UI phụ sang"
-          " Streamlit nếu chưa cập nhật."
+          "Đang ở chế độ Admin. Giao diện chức năng đang được chuyển đổi sang"
+          " Streamlit."
       )
 
   else:
@@ -196,8 +197,8 @@ def main():
       run_main_dashboard(session)
     except ImportError:
       st.info(
-          "Đang ở chế độ Giáo viên. Vui lòng chuyển đổi các file UI phụ sang"
-          " Streamlit nếu chưa cập nhật."
+          "Đang ở chế độ Giáo viên. Giao diện chức năng đang được chuyển đổi"
+          " sang Streamlit."
       )
 
 
