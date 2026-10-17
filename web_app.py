@@ -1,16 +1,28 @@
-# web_app.py - CỔNG THÔNG TIN TOÀN TRƯỜNG THUẦN WEB (KHÔNG DÙNG TKINTER)
+# web_app.py - HỆ THỐNG QUẢN LÝ BÁO GIẢNG & ĐIỀU HÀNH TOÀN DIỆN (ĐẦY ĐỦ 100% CHỨC NĂNG)
 from datetime import date, datetime, timedelta
-import os
 import re
 from config import DB_URI
 import pandas as pd
 import psycopg2
+import service_so_bao_giang as sbg_service
 import streamlit as st
 
 st.set_page_config(
-    page_title="Quản Lý Giảng Dạy - THPT Nguyễn Việt Hồng",
+    page_title="THPT Nguyễn Việt Hồng - Quản Lý Giảng Dạy",
     page_icon="🏫",
     layout="wide",
+)
+
+# Custom CSS cho giao diện di động & máy tính
+st.markdown(
+    """
+    <style>
+        .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
+        .header-title { text-align: center; color: #1A5276; font-size: 22px; font-weight: bold; margin-bottom: 2px; }
+        .sub-title { text-align: center; color: #555; font-size: 13px; margin-bottom: 12px; }
+    </style>
+""",
+    unsafe_allow_html=True,
 )
 
 
@@ -26,13 +38,12 @@ if "user" not in st.session_state:
 # =============================================================================
 if not st.session_state["user"]:
     st.markdown(
-        "<h2 style='text-align: center; color: #1A5276;'>TRƯỜNG THPT NGUYỄN"
-        " VIỆT HỒNG</h2>",
+        "<div class='header-title'>TRƯỜNG THPT NGUYỄN VIỆT HỒNG</div>",
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<p style='text-align: center; color: #555;'>HỆ THỐNG QUẢN LÝ BÁO GIẢNG"
-        " & THEO DÕI GIỜ DẠY TRỰC TUYẾN</p>",
+        "<div class='sub-title'>HỆ THỐNG QUẢN LÝ BÁO GIẢNG & THEO DÕI GIỜ DẠY"
+        " TRỰC TUYẾN</div>",
         unsafe_allow_html=True,
     )
 
@@ -40,13 +51,13 @@ if not st.session_state["user"]:
     with col2:
         with st.form("login_form"):
             st.subheader("🔑 Đăng Nhập Hệ Thống")
-            magv = st.text_input("Mã Giáo Viên:", placeholder="VD: PHONGTOAN").strip()
+            magv = st.text_input(
+                "Mã Giáo Viên:", placeholder="VD: PHONGTOAN"
+            ).strip()
             mat_khau = st.text_input("Mật Khẩu:", type="password")
-            btn_login = st.form_submit_button(
+            if st.form_submit_button(
                 "ĐĂNG NHẬP NGAY", type="primary", use_container_width=True
-            )
-
-            if btn_login:
+            ):
                 if not magv or not mat_khau:
                     st.warning("Vui lòng nhập đầy đủ thông tin!")
                 else:
@@ -80,14 +91,13 @@ if not st.session_state["user"]:
 
 else:
     # =========================================================================
-    # 2. GIAO DIỆN CHÍNH (PHÂN QUYỀN TỰ ĐỘNG)
+    # 2. GIAO DIỆN CHÍNH (ĐẦY ĐỦ TẤT CẢ CHỨC NĂNG)
     # =========================================================================
     user = st.session_state["user"]
     role = str(user["role"]).upper()
     is_admin = role in ["ADMIN", "BGH", "QUẢN TRỊ", "BAN GIÁM HIỆU"]
     is_totruong = role == "TO_TRUONG"
 
-    # Header
     chuc_danh = (
         "BAN GIÁM HIỆU"
         if is_admin
@@ -106,108 +116,397 @@ else:
 
     st.divider()
 
-    # -------------------------------------------------------------------------
-    # GIAO DIỆN DÀNH CHO ADMIN / BAN GIÁM HIỆU
-    # -------------------------------------------------------------------------
-    if is_admin:
-        st.subheader("🏢 TRUNG TÂM ĐIỀU HÀNH & GIÁM SÁT TOÀN TRƯỜNG")
-        tab_ad1, tab_ad2, tab_ad3 = st.tabs([
-            "📊 Giám Sát Giờ Dạy Toàn Trường",
-            "📝 Giám Sát Đơn Nghỉ / Bù",
-            "👥 Danh Sách Giáo Viên",
+    # TẠO TẬP HỢP TẤT CẢ CÁC TABS NGHIỆP VỤ
+    tab_titles = [
+        "📅 TKB Cá Nhân",
+        "📖 Sổ Báo Giảng",
+        "⛔ Báo Nghỉ",
+        "🟢 Dạy Bù",
+        "🟡 Dạy Thay / HSG",
+        "📋 Lịch Sử Đơn",
+    ]
+
+    if is_totruong:
+        tab_titles.extend(["👥 Soi Báo Giảng Tổ", "📝 Đơn Của Tổ"])
+    elif is_admin:
+        tab_titles.extend([
+            "📊 Giám Sát Toàn Trường",
+            "📝 Biến Động Toàn Trường",
+            "👥 Danh Sách GV",
         ])
 
-        with tab_ad1:
-            st.markdown("#### Bảng Đối Chiếu Tiến Độ Giờ Dạy")
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT magv, tengv, to_bo_mon, COALESCE(dinh_muc_tiet, 17)"
-                    " FROM giao_vien ORDER BY to_bo_mon, tengv"
-                )
-                rows = cur.fetchall()
-                cur.close()
-                conn.close()
+    tab_titles.append("⚙️ Đổi Mật Khẩu")
 
-                df_gv = pd.DataFrame(
-                    rows,
-                    columns=["Mã GV", "Họ và Tên", "Tổ Bộ Môn", "Định Mức/Tuần"],
-                )
-                st.dataframe(df_gv, use_container_width=True)
-            except Exception as e:
-                st.error(f"Lỗi tải dữ liệu: {e}")
-
-        with tab_ad2:
-            st.markdown("#### Toàn Bộ Đơn Báo Nghỉ / Dạy Bù Toàn Trường")
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute("""
-                    SELECT id, magv, loai, ngay, buoi, tiet_tkb, lop, ly_do, trang_thai 
-                    FROM bien_dong_lich_day 
-                    ORDER BY ngay DESC LIMIT 50
-                """)
-                rows_bd = cur.fetchall()
-                cur.close()
-                conn.close()
-
-                df_bd = pd.DataFrame(
-                    rows_bd,
-                    columns=[
-                        "ID",
-                        "Mã GV",
-                        "Loại",
-                        "Ngày",
-                        "Buổi",
-                        "Tiết",
-                        "Lớp",
-                        "Lý Do",
-                        "Trạng Thái",
-                    ],
-                )
-                st.dataframe(df_bd, use_container_width=True)
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
-
-        with tab_ad3:
-            st.markdown("#### Danh Mục Nhân Sự Toàn Trường")
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute(
-                    "SELECT magv, tengv, to_bo_mon, chuc_vu, role FROM"
-                    " giao_vien ORDER BY to_bo_mon"
-                )
-                ds_all_gv = cur.fetchall()
-                cur.close()
-                conn.close()
-                st.dataframe(
-                    pd.DataFrame(
-                        ds_all_gv,
-                        columns=[
-                            "Mã GV",
-                            "Họ Tên",
-                            "Tổ",
-                            "Chức Vụ",
-                            "Quyền Hạn",
-                        ],
-                    ),
-                    use_container_width=True,
-                )
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+    tabs = st.tabs(tab_titles)
 
     # -------------------------------------------------------------------------
-    # GIAO DIỆN DÀNH CHO TỔ TRƯỞNG CHUYÊN MÔN
+    # TAB 1: THỜI KHÓA BIỂU CÁ NHÂN
     # -------------------------------------------------------------------------
-    elif is_totruong:
-        st.subheader(f"👥 QUẢN LÝ CHUYÊN MÔN - TỔ {user['to_bm'].upper()}")
-        tab_tt1, tab_tt2 = st.tabs(
-            ["📝 Duyệt Báo Nghỉ / Bù Của Tổ", "👥 Giáo Viên Trong Tổ"]
+    with tabs[0]:
+        st.subheader(f"📅 Thời Khóa Biểu - GV: {user['tengv']}")
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT thu, buoi, tiet, lop, mon, COALESCE(phan_mon, '') 
+                FROM thoi_khoa_bieu 
+                WHERE magv = %s 
+                ORDER BY thu, buoi DESC, tiet ASC
+            """,
+                (user["magv"],),
+            )
+            rows_tkb = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            if rows_tkb:
+                df_tkb = pd.DataFrame(
+                    rows_tkb,
+                    columns=["Thứ", "Buổi", "Tiết", "Lớp", "Môn", "Phân Môn"],
+                )
+                st.dataframe(df_tkb, use_container_width=True)
+            else:
+                st.info("Chưa có dữ liệu Thời khóa biểu.")
+        except Exception as e:
+            st.error(f"Lỗi tải TKB: {e}")
+
+    # -------------------------------------------------------------------------
+    # TAB 2: SỔ BÁO GIẢNG CÁ NHÂN
+    # -------------------------------------------------------------------------
+    with tabs[1]:
+        st.subheader("📖 Tra Cứu Sổ Báo Giảng Tuần")
+        tuan_sbg = st.number_input(
+            "Chọn Tuần học:", min_value=1, max_value=35, value=1, step=1
+        )
+        try:
+            with st.spinner("Đang tính toán tiến độ Sổ Báo Giảng..."):
+                rows_sbg, tong_tiet_sbg = sbg_service.lay_du_lieu_bao_giang(
+                    DB_URI, user["magv"], user["to_bm"], int(tuan_sbg)
+                )
+            st.success(f"Tuần {tuan_sbg}: Tổng cộng {tong_tiet_sbg} tiết thực dạy")
+
+            for r in rows_sbg:
+                if r["row_type"] != "empty":
+                    c_tag = (
+                        "🔴"
+                        if r["row_type"] == "nghi"
+                        else (
+                            "🟡"
+                            if r["row_type"] == "day_thay"
+                            else (
+                                "🔵"
+                                if r["row_type"] == "hsg"
+                                else "🟢"
+                            )
+                        )
+                    )
+                    st.markdown(
+                        f"""
+                    **{c_tag} {r['thu_ngay']} ({r['buoi']} - Tiết {r['tiet']})**: Lớp **{r['lop']}**  
+                    • **Môn/PM:** {r['mon_pm']} | **Tiết PPCT:** {r['tiet_ppct']} | **Bài dạy:** {r['ten_bai']}  
+                    • **Tiến độ:** *{r['tre_vuot']}* {f"| Ghi chú: {r['chu_y']}" if r['chu_y'] else ""}
+                    """
+                    )
+                    st.divider()
+        except Exception as e:
+            st.error(f"Lỗi nạp báo giảng: {e}")
+
+    # -------------------------------------------------------------------------
+    # TAB 3: BÁO NGHỈ DẠY
+    # -------------------------------------------------------------------------
+    with tabs[2]:
+        st.subheader("⛔ Đăng Ký Báo Nghỉ Giảng Dạy")
+        loai_nghi = st.selectbox(
+            "Lý do nghỉ:",
+            [
+                "Nghỉ việc riêng",
+                "Nghỉ theo kế hoạch (Họp, Lễ)",
+                "Nghỉ theo điều động",
+            ],
+        )
+        ngay_nghi = st.date_input("Ngày nghỉ:", date.today(), key="ngay_nghi_tab")
+        thu_so = ngay_nghi.weekday() + 2
+
+        col_b, col_t = st.columns(2)
+        with col_b:
+            buoi_nghi = st.selectbox(
+                "Buổi:", ["Sáng", "Chiều"], key="b_nghi_tab"
+            )
+        with col_t:
+            tiet_nghi = st.selectbox(
+                "Tiết TKB:", [1, 2, 3, 4, 5], key="t_nghi_tab"
+            )
+
+        lop_tkb, pm_tkb = "", ""
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT lop, mon, COALESCE(phan_mon, '') FROM thoi_khoa_bieu 
+                WHERE magv = %s AND (thu = %s OR thu = %s) AND buoi = %s AND tiet = %s
+            """,
+                (user["magv"], str(thu_so), thu_so, buoi_nghi, tiet_nghi),
+            )
+            r = cur.fetchone()
+            cur.close()
+            conn.close()
+            if r:
+                lop_tkb = r[0].strip()
+                pm_tkb = r[2].strip() if r[2].strip() else r[1].strip()
+                st.info(
+                    f"✔ TKB Thứ {thu_so}: Lớp **{lop_tkb}** - Môn: {pm_tkb}"
+                )
+            else:
+                st.warning(
+                    f"⚠️ Thứ {thu_so} Tiết {tiet_nghi} không có trên TKB!"
+                )
+        except Exception:
+            pass
+
+        lydo_nghi = st.text_input(
+            "Chi tiết lý do (*):", placeholder="Bắt buộc nhập lý do..."
+        )
+        if st.button("GỬI BÁO NGHỈ", type="primary"):
+            if not lydo_nghi.strip():
+                st.error("Bắt buộc phải nhập lý do chi tiết!")
+            elif not lop_tkb:
+                st.error("Tiết này không có lịch dạy trên TKB!")
+            else:
+                try:
+                    conn = get_db()
+                    cur = conn.cursor()
+                    cur.execute(
+                        """
+                        INSERT INTO bien_dong_lich_day 
+                        (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
+                    """,
+                        (
+                            user["magv"],
+                            loai_nghi,
+                            ngay_nghi,
+                            buoi_nghi,
+                            tiet_nghi,
+                            lop_tkb,
+                            pm_tkb,
+                            lydo_nghi,
+                        ),
+                    )
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    st.success(
+                        f"Đã báo nghỉ thành công lớp {lop_tkb} ngày"
+                        f" {ngay_nghi.strftime('%d/%m/%Y')}!"
+                    )
+                except Exception as ex:
+                    st.error(f"Lỗi: {ex}")
+
+    # -------------------------------------------------------------------------
+    # TAB 4: ĐĂNG KÝ DẠY BÙ
+    # -------------------------------------------------------------------------
+    with tabs[3]:
+        st.subheader("🟢 Đăng Ký Lịch Dạy Bù")
+        ngay_bu = st.date_input("Ngày dạy bù:", date.today(), key="ngay_bu_all")
+        c_bb, c_bt = st.columns(2)
+        with c_bb:
+            b_bu = st.selectbox("Buổi:", ["Sáng", "Chiều"], key="b_bu_all")
+        with c_bt:
+            t_bu = st.selectbox("Tiết:", [1, 2, 3, 4, 5], key="t_bu_all")
+
+        lop_bu = st.text_input("Lớp dạy bù:", placeholder="VD: 11A1")
+        pm_bu = st.text_input(
+            "Phân môn dạy bù:",
+            value="Đại số",
+            placeholder="VD: Đại số, Hình học...",
+        )
+        lydo_bu = st.text_input(
+            "Lý do dạy bù:", placeholder="VD: Bù cho tiết nghỉ ngày..."
         )
 
-        with tab_tt1:
+        if st.button("GỬI ĐĂNG KÝ DẠY BÙ", type="primary"):
+            if not lop_bu.strip():
+                st.error("Vui lòng nhập tên lớp!")
+            else:
+                try:
+                    conn = get_db()
+                    cur = conn.cursor()
+                    cur.execute(
+                        """
+                        INSERT INTO bien_dong_lich_day 
+                        (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
+                        VALUES (%s, 'Dạy bù', %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
+                    """,
+                        (
+                            user["magv"],
+                            ngay_bu,
+                            b_bu,
+                            t_bu,
+                            lop_bu.strip(),
+                            pm_bu.strip(),
+                            lydo_bu or "Dạy bù",
+                        ),
+                    )
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    st.success(f"Đã đăng ký dạy bù lớp {lop_bu} thành công!")
+                except Exception as ex:
+                    st.error(f"Lỗi: {ex}")
+
+    # -------------------------------------------------------------------------
+    # TAB 5: DẠY THAY & BDHSG
+    # -------------------------------------------------------------------------
+    with tabs[4]:
+        st.subheader("🟡 Đăng Ký Dạy Thay Hoặc Bồi Dưỡng HSG")
+        loai_tt = st.radio(
+            "Chọn loại hình:",
+            ["Dạy thay đồng nghiệp", "Bồi dưỡng học sinh giỏi (x1.5)"],
+            horizontal=True,
+        )
+        ngay_tt = st.date_input("Ngày thực hiện:", date.today(), key="ngay_tt_tab")
+        c_tb, c_tt = st.columns(2)
+        with c_tb:
+            b_tt = st.selectbox("Buổi:", ["Sáng", "Chiều"], key="b_tt_tab")
+        with c_tt:
+            t_tt = st.selectbox("Tiết:", [1, 2, 3, 4, 5], key="t_tt_tab")
+
+        lop_tt = st.text_input("Lớp / Đội tuyển:", placeholder="VD: 12A2")
+        nd_tt = st.text_input(
+            "Chi tiết / Tên GV được dạy thay:", placeholder="Nhập chi tiết..."
+        )
+
+        if st.button("GỬI ĐĂNG KÝ BIẾN ĐỘNG", type="primary"):
+            loai_db_save = (
+                "Dạy thay"
+                if "Dạy thay" in loai_tt
+                else "Bồi dưỡng HSG"
+            )
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    INSERT INTO bien_dong_lich_day 
+                    (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
+                """,
+                    (
+                        user["magv"],
+                        loai_db_save,
+                        ngay_tt,
+                        b_tt,
+                        t_tt,
+                        lop_tt.strip(),
+                        user["to_bm"],
+                        nd_tt,
+                    ),
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+                st.success(f"Đã gửi thành công đơn [{loai_db_save}]!")
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
+
+    # -------------------------------------------------------------------------
+    # TAB 6: LỊCH SỬ ĐƠN (CÓ NÚT XÓA)
+    # -------------------------------------------------------------------------
+    with tabs[5]:
+        st.subheader("📋 Lịch Sử Các Đơn Biến Động Đã Gửi")
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, loai, ngay, buoi, tiet_tkb, lop, ly_do, trang_thai 
+                FROM bien_dong_lich_day 
+                WHERE magv = %s AND trang_thai != 'DA_HUY'
+                ORDER BY ngay DESC, id DESC LIMIT 15
+            """,
+                (user["magv"],),
+            )
+            ls = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            if ls:
+                for row in ls:
+                    d_str = row[2].strftime("%d/%m/%Y")
+                    col_info, col_del = st.columns([4, 1])
+                    with col_info:
+                        st.markdown(
+                            f"**[{row[1]}]** Ngày {d_str} ({row[3]} - Tiết"
+                            f" {row[4]} Lớp {row[5]})  \n*{row[6]}*"
+                        )
+                    with col_del:
+                        if st.button("Xóa", key=f"del_btn_{row[0]}"):
+                            c_del = get_db()
+                            cur_d = c_del.cursor()
+                            cur_d.execute(
+                                "DELETE FROM bien_dong_lich_day WHERE id = %s"
+                                " AND magv = %s",
+                                (row[0], user["magv"]),
+                            )
+                            c_del.commit()
+                            cur_d.close()
+                            c_del.close()
+                            st.success("Đã xóa đơn!")
+                            st.rerun()
+                    st.divider()
+            else:
+                st.info("Chưa có đơn biến động nào.")
+        except Exception as e:
+            st.error(f"Lỗi: {e}")
+
+    # -------------------------------------------------------------------------
+    # NẾU LÀ TỔ TRƯỞNG: THÊM TAB SOI BÁO GIẢNG TỔ VÀ ĐƠN TỔ
+    # -------------------------------------------------------------------------
+    if is_totruong:
+        with tabs[6]:
+            st.subheader(f"👥 Soi Sổ Báo Giảng Của Tổ {user['to_bm']}")
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT magv, tengv FROM giao_vien WHERE to_bo_mon = %s"
+                    " ORDER BY tengv",
+                    (user["to_bm"],),
+                )
+                gv_list = cur.fetchall()
+                cur.close()
+                conn.close()
+
+                gv_dict = {f"{r[1]} ({r[0]})": r[0] for r in gv_list}
+                gv_duoc_chon = st.selectbox(
+                    "Chọn Giáo viên:", list(gv_dict.keys())
+                )
+                tuan_soi = st.number_input(
+                    "Tuần xem:", min_value=1, max_value=35, value=1, step=1
+                )
+
+                if st.button("🔍 XEM BÁO GIẢNG"):
+                    magv_soi = gv_dict[gv_duoc_chon]
+                    rows_soi, t_soi = sbg_service.lay_du_lieu_bao_giang(
+                        DB_URI, magv_soi, user["to_bm"], int(tuan_soi)
+                    )
+                    st.success(f"Tổng số tiết thực dạy: {t_soi} tiết")
+                    for r in rows_soi:
+                        if r["row_type"] != "empty":
+                            st.markdown(
+                                f"**{r['thu_ngay']} ({r['buoi']} - Tiết"
+                                f" {r['tiet']})**: Lớp **{r['lop']}** | Môn:"
+                                f" {r['mon_pm']} | PPCT: {r['tiet_ppct']} | Bài:"
+                                f" {r['ten_bai']} | *{r['tre_vuot']}*"
+                            )
+                            st.divider()
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
+
+        with tabs[7]:
+            st.subheader(f"📝 Đơn Báo Nghỉ / Bù Trong Tổ {user['to_bm']}")
             try:
                 conn = get_db()
                 cur = conn.cursor()
@@ -224,14 +523,13 @@ else:
                 rows_to = cur.fetchall()
                 cur.close()
                 conn.close()
-
-                if rows_to:
-                    df_to = pd.DataFrame(
+                st.dataframe(
+                    pd.DataFrame(
                         rows_to,
                         columns=[
                             "ID",
                             "Mã GV",
-                            "Giáo Viên",
+                            "Họ Tên",
                             "Loại",
                             "Ngày",
                             "Buổi",
@@ -239,249 +537,140 @@ else:
                             "Lớp",
                             "Lý Do",
                         ],
-                    )
-                    st.dataframe(df_to, use_container_width=True)
-                else:
-                    st.info("Hiện không có đơn báo nghỉ nào trong tổ.")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+                    ),
+                    use_container_width=True,
+                )
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
 
-        with tab_tt2:
+    # -------------------------------------------------------------------------
+    # NẾU LÀ ADMIN / BGH: THÊM CÁC TAB ĐIỀU HÀNH TOÀN TRƯỜNG
+    # -------------------------------------------------------------------------
+    elif is_admin:
+        with tabs[6]:
+            st.subheader("📊 Giám Sát Tiến Độ & Định Mức Giờ Dạy Toàn Trường")
             try:
                 conn = get_db()
                 cur = conn.cursor()
                 cur.execute(
-                    "SELECT magv, tengv, chuc_vu, COALESCE(dinh_muc_tiet, 17)"
-                    " FROM giao_vien WHERE to_bo_mon = %s ORDER BY tengv",
-                    (user["to_bm"],),
+                    "SELECT magv, tengv, to_bo_mon, COALESCE(dinh_muc_tiet, 17)"
+                    " FROM giao_vien ORDER BY to_bo_mon, tengv"
                 )
-                rows_gv_to = cur.fetchall()
+                rows_all_dm = cur.fetchall()
                 cur.close()
                 conn.close()
                 st.dataframe(
                     pd.DataFrame(
-                        rows_gv_to,
-                        columns=["Mã GV", "Họ Tên", "Chức Vụ", "Định Mức/Tuần"],
+                        rows_all_dm,
+                        columns=[
+                            "Mã GV",
+                            "Họ và Tên",
+                            "Tổ Bộ Môn",
+                            "Định Mức/Tuần",
+                        ],
                     ),
                     use_container_width=True,
                 )
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
 
-    # -------------------------------------------------------------------------
-    # GIAO DIỆN DÀNH CHO GIÁO VIÊN BỘ MÔN
-    # -------------------------------------------------------------------------
-    else:
-        tab1, tab2, tab3, tab4 = st.tabs([
-            "⛔ Báo Nghỉ",
-            "🟢 Dạy Bù",
-            "🟡 Dạy Thay / HSG",
-            "📅 Hôm Nay",
-        ])
+        with tabs[7]:
+            st.subheader("📝 Quản Lý Toàn Bộ Biến Động Lịch Dạy Toàn Trường")
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute("""
+                    SELECT id, magv, loai, ngay, buoi, tiet_tkb, lop, ly_do, trang_thai 
+                    FROM bien_dong_lich_day 
+                    ORDER BY ngay DESC LIMIT 50
+                """)
+                rows_bd_all = cur.fetchall()
+                cur.close()
+                conn.close()
+                st.dataframe(
+                    pd.DataFrame(
+                        rows_bd_all,
+                        columns=[
+                            "ID",
+                            "Mã GV",
+                            "Loại",
+                            "Ngày",
+                            "Buổi",
+                            "Tiết",
+                            "Lớp",
+                            "Lý Do",
+                            "Trạng Thái",
+                        ],
+                    ),
+                    use_container_width=True,
+                )
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
 
-        with tab1:
-            st.subheader("⛔ Đăng Ký Báo Nghỉ Giảng Dạy")
-            loai_nghi = st.selectbox(
-                "Lý do nghỉ:",
-                [
-                    "Nghỉ việc riêng",
-                    "Nghỉ theo kế hoạch (Họp, Lễ)",
-                    "Nghỉ theo điều động",
-                ],
-            )
-            ngay_nghi = st.date_input("Ngày nghỉ:", date.today())
-            thu_so = ngay_nghi.weekday() + 2
-
-            col_b, col_t = st.columns(2)
-            with col_b:
-                buoi = st.selectbox("Buổi:", ["Sáng", "Chiều"])
-            with col_t:
-                tiet = st.selectbox("Tiết TKB:", [1, 2, 3, 4, 5])
-
-            lop_tkb, pm_tkb = "", ""
+        with tabs[8]:
+            st.subheader("👥 Danh Sách Toàn Thể Hội Đồng Sư Phạm")
             try:
                 conn = get_db()
                 cur = conn.cursor()
                 cur.execute(
-                    """
-                    SELECT lop, mon, COALESCE(phan_mon, '') FROM thoi_khoa_bieu 
-                    WHERE magv = %s AND (thu = %s OR thu = %s) AND buoi = %s AND tiet = %s
-                """,
-                    (user["magv"], str(thu_so), thu_so, buoi, tiet),
+                    "SELECT magv, tengv, to_bo_mon, chuc_vu, role FROM"
+                    " giao_vien ORDER BY to_bo_mon"
                 )
-                r = cur.fetchone()
+                rows_ns = cur.fetchall()
                 cur.close()
                 conn.close()
-                if r:
-                    lop_tkb = r[0].strip()
-                    pm_tkb = r[2].strip() if r[2].strip() else r[1].strip()
-                    st.info(
-                        f"✔ TKB Thứ {thu_so}: Lớp **{lop_tkb}** - Môn: {pm_tkb}"
-                    )
-                else:
-                    st.warning(f"⚠️ Thứ {thu_so} Tiết {tiet} không có trên TKB!")
-            except Exception:
-                pass
+                st.dataframe(
+                    pd.DataFrame(
+                        rows_ns,
+                        columns=[
+                            "Mã GV",
+                            "Họ Tên",
+                            "Tổ",
+                            "Chức Vụ",
+                            "Quyền Hạn",
+                        ],
+                    ),
+                    use_container_width=True,
+                )
+            except Exception as ex:
+                st.error(f"Lỗi: {ex}")
 
-            lydo_nghi = st.text_input(
-                "Chi tiết lý do (*):", placeholder="Bắt buộc nhập lý do..."
+    # -------------------------------------------------------------------------
+    # TAB CUỐI CÙNG: ĐỔI MẬT KHẨU CÁ NHÂN
+    # -------------------------------------------------------------------------
+    with tabs[-1]:
+        st.subheader("🔑 Đổi Mật Khẩu Cá Nhân")
+        with st.form("doi_mk_all"):
+            mk_cu = st.text_input("Mật khẩu hiện tại:", type="password")
+            mk_moi = st.text_input("Mật khẩu mới:", type="password")
+            mk_nhap_lai = st.text_input(
+                "Nhập lại mật khẩu mới:", type="password"
             )
-            if st.button("GỬI BÁO NGHỈ", type="primary"):
-                if not lydo_nghi.strip():
-                    st.error("Bắt buộc phải nhập lý do!")
-                elif not lop_tkb:
-                    st.error("Tiết này không có lịch dạy trên TKB!")
+            if st.form_submit_button("XÁC NHẬN ĐỔI MẬT KHẨU", type="primary"):
+                if not mk_cu or not mk_moi:
+                    st.warning("Vui lòng điền đầy đủ các ô!")
+                elif mk_moi != mk_nhap_lai:
+                    st.error("Mật khẩu nhập lại không khớp!")
                 else:
                     try:
                         conn = get_db()
                         cur = conn.cursor()
                         cur.execute(
-                            """
-                            INSERT INTO bien_dong_lich_day 
-                            (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
-                        """,
-                            (
-                                user["magv"],
-                                loai_nghi,
-                                ngay_nghi,
-                                buoi,
-                                tiet,
-                                lop_tkb,
-                                pm_tkb,
-                                lydo_nghi,
-                            ),
+                            "SELECT matkhau FROM giao_vien WHERE magv = %s",
+                            (user["magv"],),
                         )
-                        conn.commit()
+                        mk_that = cur.fetchone()[0]
+                        if mk_cu != mk_that:
+                            st.error("Mật khẩu hiện tại không đúng!")
+                        else:
+                            cur.execute(
+                                "UPDATE giao_vien SET matkhau = %s WHERE magv"
+                                " = %s",
+                                (mk_moi, user["magv"]),
+                            )
+                            conn.commit()
+                            st.success("Đổi mật khẩu thành công!")
                         cur.close()
                         conn.close()
-                        st.success(
-                            f"Đã báo nghỉ thành công lớp {lop_tkb} ngày"
-                            f" {ngay_nghi.strftime('%d/%m/%Y')}!"
-                        )
                     except Exception as ex:
                         st.error(f"Lỗi: {ex}")
-
-        with tab2:
-            st.subheader("🟢 Đăng Ký Dạy Bù")
-            ngay_bu = st.date_input(
-                "Ngày dạy bù:", date.today(), key="ngay_bu_gv"
-            )
-            col_bb, col_bt = st.columns(2)
-            with col_bb:
-                buoi_bu = st.selectbox("Buổi:", ["Sáng", "Chiều"], key="b_bu_gv")
-            with col_bt:
-                tiet_bu = st.selectbox(
-                    "Tiết:", [1, 2, 3, 4, 5], key="t_bu_gv"
-                )
-
-            lop_bu = st.text_input("Lớp dạy bù:", placeholder="VD: 11A1")
-            lydo_bu = st.text_input(
-                "Lý do dạy bù:", placeholder="VD: Bù cho tiết nghỉ..."
-            )
-
-            if st.button("GỬI ĐĂNG KÝ DẠY BÙ", type="primary"):
-                if not lop_bu.strip():
-                    st.error("Vui lòng nhập tên lớp!")
-                else:
-                    try:
-                        conn = get_db()
-                        cur = conn.cursor()
-                        cur.execute(
-                            """
-                            INSERT INTO bien_dong_lich_day 
-                            (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
-                            VALUES (%s, 'Dạy bù', %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
-                        """,
-                            (
-                                user["magv"],
-                                ngay_bu,
-                                buoi_bu,
-                                tiet_bu,
-                                lop_bu.strip(),
-                                user["to_bm"],
-                                lydo_bu or "Dạy bù",
-                            ),
-                        )
-                        conn.commit()
-                        cur.close()
-                        conn.close()
-                        st.success(f"Đã đăng ký dạy bù lớp {lop_bu} thành công!")
-                    except Exception as ex:
-                        st.error(f"Lỗi: {ex}")
-
-        with tab3:
-            st.subheader("🟡 Đăng Ký Dạy Thay / BDHSG")
-            loai_chon = st.radio(
-                "Chọn loại biến động:",
-                ["Dạy thay đồng nghiệp", "Bồi dưỡng học sinh giỏi"],
-                horizontal=True,
-            )
-            ngay_tt = st.date_input("Ngày thực hiện:", date.today())
-            lop_tt = st.text_input("Lớp / Đội tuyển:", placeholder="VD: 12A2")
-            noi_dung_tt = st.text_input(
-                "Chi tiết / Lý do / GV được dạy thay:",
-                placeholder="Nhập chi tiết...",
-            )
-
-            if st.button("GỬI ĐĂNG KÝ NGAY", type="primary"):
-                loai_luu = (
-                    "Dạy thay"
-                    if "Dạy thay" in loai_chon
-                    else "Bồi dưỡng HSG"
-                )
-                try:
-                    conn = get_db()
-                    cur = conn.cursor()
-                    cur.execute(
-                        """
-                        INSERT INTO bien_dong_lich_day 
-                        (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
-                        VALUES (%s, %s, %s, 'Sáng', 1, %s, %s, '', %s, 'CHO_DUYET')
-                    """,
-                        (
-                            user["magv"],
-                            loai_luu,
-                            ngay_tt,
-                            lop_tt,
-                            user["to_bm"],
-                            noi_dung_tt,
-                        ),
-                    )
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    st.success(f"Đã ghi nhận thành công đơn [{loai_luu}]!")
-                except Exception as ex:
-                    st.error(f"Lỗi: {ex}")
-
-        with tab4:
-            st.subheader("📅 Lịch Dạy Hôm Nay")
-            hom_nay = date.today()
-            thu_hn = hom_nay.weekday() + 2
-            try:
-                conn = get_db()
-                cur = conn.cursor()
-                cur.execute(
-                    """
-                    SELECT buoi, tiet, lop, mon, COALESCE(phan_mon, '') 
-                    FROM thoi_khoa_bieu 
-                    WHERE magv = %s AND (thu = %s OR thu = %s)
-                    ORDER BY buoi DESC, tiet ASC
-                """,
-                    (user["magv"], str(thu_hn), thu_hn),
-                )
-                ds = cur.fetchall()
-                cur.close()
-                conn.close()
-                if ds:
-                    for t in ds:
-                        pm_str = f"({t[4]})" if t[4] else ""
-                        st.write(
-                            f"🔹 **{t[0]} - Tiết {t[1]}**: Lớp **{t[2]}** - Môn"
-                            f" {t[3]} {pm_str}"
-                        )
-                else:
-                    st.info("Hôm nay Thầy/Cô không có tiết dạy trên TKB.")
-            except Exception as e:
-                st.error(f"Lỗi: {e}")
