@@ -1,166 +1,140 @@
-import streamlit as st
-from auth import authenticate_user
+# main.py
+import tkinter as tk
+from ui_login import LoginWindow
 
-# Cấu hình trang Streamlit
-st.set_page_config(
-    page_title="Hệ Thống Báo Giảng & Kê Giờ - THPT Nguyễn Việt Hồng",
-    page_icon="🌸",
-    layout="wide",
-)
 
-def hien_thiep_an_yen(tengv):
-    """Hiển thị thiệp thơ an yên, màu sắc phong cảnh hữu tình, thư thái trên web"""
-    st.markdown("""
-        <style>
-        .thiep-container {
-            background-color: #E8F8F5;
-            border: 2px solid #A3E4D7;
-            border-radius: 15px;
-            padding: 30px;
-            text-align: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            margin: 20px auto;
-            max-width: 600px;
-        }
-        .tieu-de-gv {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 24px;
-            font-weight: bold;
-            color: #117A65;
-            margin-bottom: 15px;
-        }
-        .bai-tho {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 18px;
-            font-style: italic;
-            color: #1A5276;
-            background-color: #F4F6F6;
-            padding: 20px;
-            border-radius: 8px;
-            border: 1px solid #D5D8DC;
-            line-height: 1.6;
-            margin: 15px 0;
-            white-space: pre-line;
-        }
-        .loi-chuc {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 16px;
-            color: #5D6D7E;
-            margin-top: 15px;
-        }
-        .tac-gia {
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 15px;
-            font-weight: bold;
-            font-style: italic;
-            color: #B7950B;
-            margin-top: 10px;
-            margin-bottom: 20px;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="thiep-container">
-        <div class="tieu-de-gv">🌿 Kính tặng Thầy/Cô: {tengv}</div>
-        <div class="bai-tho">
-            “Bụi phấn bay bay mỉm miệng cười,<br>
-            Bảng đen nâng bước tuổi đôi mươi.<br>
-            Rời trang giáo án lòng thanh thản,<br>
-            Một đóa an yên nở giữa đời.”
-        </div>
-        <div class="loi-chuc">Chúc Thầy/Cô một ngày giảng dạy an vui, nhẹ nhàng và trọn vẹn!</div>
-        <div class="tac-gia">— Thân ái: Tác giả Nguyễn Văn Phong —</div>
-    </div>
-    """, unsafe_allow_html=True)
+def hien_thiep_an_yen(tengv, callback_tiep_tuc):
+    """Cửa sổ thiệp thơ an yên, màu sắc phong cảnh hữu tình, thư thái"""
+    thiep = tk.Toplevel()
+    thiep.title("🌸 Gửi Chút An Yên Đến Thầy/Cô")
+    thiep.geometry("560x370")
+    thiep.resizable(False, False)
+    thiep.configure(bg="#E8F8F5")  # Màu xanh ngọc pastel êm dịu
 
-def main():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if "session_data" not in st.session_state:
-        st.session_state.session_data = None
-    if "show_greeting" not in st.session_state:
-        st.session_state.show_greeting = False
+    # Căn giữa màn hình máy tính
+    thiep.update_idletasks()
+    w = thiep.winfo_width()
+    h = thiep.winfo_height()
+    ws = thiep.winfo_screenwidth()
+    hs = thiep.winfo_screenheight()
+    x = (ws // 2) - (w // 2)
+    y = (hs // 2) - (h // 2)
+    thiep.geometry(f"{w}x{h}+{x}+{y}")
 
-    # 1. GIAO DIỆN ĐĂNG NHẬP
-    if not st.session_state.logged_in:
-        st.markdown("<h2 style='text-align: center; color: #0d47a1;'>HỆ THỐNG QUẢN LÝ BÁO GIẢNG & KÊ GIỜ</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #555;'>Trường THPT Nguyễn Việt Hồng - Cần Thơ</p>", unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 1.2, 1])
-        with col2:
-            with st.form("login_form"):
-                magv = st.text_input("Mã Giáo Viên hoặc Họ Tên").strip()
-                matkhau = st.text_input("Mật khẩu", type="password").strip()
-                submit_btn = st.form_submit_button("Đăng nhập", use_container_width=True)
-                
-                if submit_btn:
-                    if not magv or not matkhau:
-                        st.warning("Vui lòng nhập đầy đủ mã giáo viên và mật khẩu!")
-                    else:
-                        try:
-                            user_session = authenticate_user(magv, matkhau)
-                            if user_session:
-                                st.session_state.session_data = user_session
-                                st.session_state.logged_in = True
-                                st.session_state.show_greeting = True
-                                st.rerun()
-                            else:
-                                st.error("❌ Sai Mã Giáo Viên hoặc Mật khẩu!")
-                        except Exception as e:
-                            st.error(f"❌ Lỗi hệ thống: {str(e)}")
-        return
+    # Đưa lên trên cùng
+    thiep.lift()
+    thiep.attributes("-topmost", True)
+    thiep.focus_force()
 
-    # 2. HIỆN THIỆP THƠ AN YÊN SAU KHI ĐĂNG NHẬP THÀNH CÔNG
-    current_session = st.session_state.session_data
-    tengv = current_session.get("tengv", "Thầy/Cô") if current_session else "Thầy/Cô"
-    
-    if st.session_state.show_greeting:
-        hien_thiep_an_yen(tengv)
-        col_btn1, col_btn2, col_btn3 = st.columns([2, 1.5, 2])
-        with col_btn2:
-            if st.button("🌸 Nhận An Yên & Bắt Đầu 🌸", use_container_width=True, type="primary"):
-                st.session_state.show_greeting = False
-                st.rerun()
-        return
+    # Khung thiệp bo viền trang nhã
+    khung = tk.Frame(
+        thiep, bg="#FFFFFF", relief="groove", bd=2, padx=20, pady=15
+    )
+    khung.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
 
-    # 3. GIAO DIỆN CHÍNH DỰA TRÊN VAI TRÒ (ROLE)
-    role = current_session.get("role") if current_session else "GV"
-    
-    st.sidebar.title("Hệ Thống Báo Giảng")
-    st.sidebar.write(f"**GV:** {current_session.get('tengv')} ({current_session.get('magv', '')})")
-    st.sidebar.write(f"**Vai trò:** {role}")
-    if st.sidebar.button("Đăng xuất", use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.session_data = None
-        st.session_state.show_greeting = False
-        st.rerun()
-        
-    st.sidebar.divider()
+    # Lời đề tặng
+    tk.Label(
+        khung,
+        text=f"🌿 Kính tặng Thầy/Cô: {tengv}",
+        font=("Times New Roman", 14, "bold"),
+        fg="#117A65",
+        bg="#FFFFFF",
+    ).pack(pady=(0, 10))
 
-    if role == "TO_TRUONG":
-        st.title("🌟 Bảng Điều Khiển Tổ Trưởng Chuyên Môn")
-        try:
-            from ui_to_truong_dashboard import run_to_truong_dashboard
-            run_to_truong_dashboard(current_session)
-        except ImportError:
-            st.info("Đang ở chế độ Tổ trưởng. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
-            
-    elif role == "ADMIN":
-        st.title("⚙️ Bảng Điều Khiển Quản Trị Viên (Admin)")
-        try:
-            from ui_admin import run_admin_dashboard
-            run_admin_dashboard(current_session)
-        except ImportError:
-            st.info("Đang ở chế độ Admin. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
-            
-    else:
-        st.title("📖 Sổ Báo Giảng Giáo Viên")
-        try:
-            from ui_main import run_main_dashboard
-            run_main_dashboard(current_session)
-        except ImportError:
-            st.info("Đang ở chế độ Giáo viên. Giao diện chức năng đang được chuyển đổi sang Streamlit.")
+    # 4 Câu thơ an nhiên (Font Times New Roman nghệ thuật)
+    tho_text = (
+        "“Bụi phấn bay bay mỉm miệng cười,\n"
+        "Bảng đen nâng bước tuổi đôi mươi.\n"
+        "Rời trang giáo án lòng thanh thản,\n"
+        "Một đóa an yên nở giữa đời.”"
+    )
+    tk.Label(
+        khung,
+        text=tho_text,
+        font=("Times New Roman", 13, "italic"),
+        fg="#1A5276",
+        bg="#F4F6F6",
+        padx=18,
+        pady=10,
+        relief="ridge",
+        bd=1,
+        justify="center",
+    ).pack(fill=tk.X, pady=5)
+
+    # Lời chúc nhẹ nhàng
+    tk.Label(
+        khung,
+        text="Chúc Thầy/Cô một ngày giảng dạy an vui, nhẹ nhàng và trọn vẹn!",
+        font=("Times New Roman", 12),
+        fg="#5D6D7E",
+        bg="#FFFFFF",
+    ).pack(pady=(10, 2))
+
+    # Tên tác giả
+    tk.Label(
+        khung,
+        text="— Thân ái: Tác giả Nguyễn Văn Phong —",
+        font=("Times New Roman", 11, "bold italic"),
+        fg="#B7950B",
+        bg="#FFFFFF",
+    ).pack(pady=(0, 12))
+
+    # Nút bấm vào phần mềm
+    def tiep_tuc():
+        thiep.destroy()
+        callback_tiep_tuc()
+
+    btn_ok = tk.Button(
+        khung,
+        text="🌸 Nhận An Yên & Bắt Đầu 🌸",
+        font=("Arial", 10, "bold"),
+        bg="#1ABC9C",
+        fg="white",
+        activebackground="#16A085",
+        activeforeground="white",
+        padx=15,
+        pady=5,
+        relief="raised",
+        cursor="hand2",
+        command=tiep_tuc,
+    )
+    btn_ok.pack()
+
+    # Bấm phím Enter hoặc phím Space cũng tự vào
+    thiep.bind("<Return>", lambda e: tiep_tuc())
+    thiep.bind("<space>", lambda e: tiep_tuc())
+
+
+def launch_app(session):
+    role = session.get("role")
+    tengv = session.get("tengv", "Thầy/Cô")
+
+    def mo_giao_dien_chinh():
+        # NẾU LÀ TỔ TRƯỞNG
+        if role == "TO_TRUONG":
+            from ui_to_truong_dashboard import ToTruongDashboardWindow
+
+            app = ToTruongDashboardWindow(session)
+            app.run()
+        # NẾU LÀ ADMIN
+        elif role == "ADMIN":
+            from ui_admin import AdminWindow
+
+            app = AdminWindow(session)
+            app.run()
+        # CÒN LẠI (GIÁO VIÊN THƯỜNG)
+        else:
+            from ui_main import MainWindow
+
+            app = MainWindow(session)
+            app.run()
+
+    # Hiện thiệp thơ màu mè phong cảnh hữu tình trước, bấm nút sẽ vào giao diện chính
+    hien_thiep_an_yen(tengv, mo_giao_dien_chinh)
+
 
 if __name__ == "__main__":
-    main()
+    root = tk.Tk()
+    login = LoginWindow(root, launch_app)
+    root.withdraw()
+    root.mainloop()
