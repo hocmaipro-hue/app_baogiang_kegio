@@ -1,171 +1,151 @@
-# ui_to_truong_dashboard.py
-import tkinter as tk
-from window_manager import open_single_window
+import streamlit as st
+from ui_admin_thong_ke_gio import render_admin_thong_ke_gio
+from ui_bien_dong_lich_day import render_bien_dong_lich_day
+from ui_doi_mat_khau import render_doi_mat_khau
+from ui_quan_ly_giao_vien import render_quan_ly_giao_vien
+from ui_quan_ly_ppct import render_quan_ly_ppct
+from ui_so_bao_giang_ca_nhan import render_so_bao_giang_ca_nhan
 
-# Import các chức năng con
-from ui_admin_thong_ke_gio import AdminThongKeGioWindow
-from ui_bien_dong_lich_day import BienDongLichDayWindow
-from ui_doi_mat_khau import DoiMatKhauWindow
-from ui_duyet_so_bao_giang import DuyetSBGWindow
-from ui_quan_ly_giao_vien import QuanLyGiaoVienWindow
-from ui_quan_ly_ppct import QuanLyPPCTWindow
-from ui_so_bao_giang_ca_nhan import SoBaoGiangCaNhanWindow
-from ui_xem_tkb import XemTKBWindow
+# Import các module giao diện đã được chuyển đổi sang Streamlit
+try:
+  from ui_xem_tkb import render_xem_tkb
+except ImportError:
+  render_xem_tkb = None
+
+try:
+  from ui_duyet_so_bao_giang import render_duyet_so_bao_giang
+except ImportError:
+  render_duyet_so_bao_giang = None
 
 
-def get_val(session, key, default=""):
-    return (
-        session.get(key, default)
-        if isinstance(session, dict)
-        else getattr(session, key, default)
+def inject_custom_css():
+  st.markdown(
+      """
+    <style>
+    /* CSS Nút tròn mềm mại chuẩn Mobile & Desktop */
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #d0d7de !important;
+        padding: 8px 18px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.25s ease-in-out !important;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        border-color: #1a5276 !important;
+        color: #1a5276 !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #219150, #27ae60) !important;
+        color: white !important;
+    }
+    .stRadio label {
+        font-weight: 600 !important;
+        font-size: 14px !important;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
+
+
+def get_val(s, k, d=""):
+  return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
+
+
+def render_to_truong_dashboard(session):
+  inject_custom_css()
+  tengv = get_val(session, "tengv", "Giáo viên")
+  to_bm = get_val(session, "to_bo_mon", "Chuyên môn")
+
+  # Sidebar menu điều hướng
+  with st.sidebar:
+    st.markdown(
+        f"<h3 style='color: #1a5276;'>Xin chào:</h3><h4>{tengv} [TỔ"
+        " TRƯỜNG]</h4>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<p style='color: #555; font-style: italic;'>Tổ bộ môn: {to_bm}</p>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
+
+    st.markdown("##### 📖 CÔNG VIỆC CÁ NHÂN")
+    menu_canhan = [
+        "📅 1. Xem Thời khóa biểu",
+        "📝 2. Đăng ký Biến động (Nghỉ/Bù/Thay/HSG)",
+        "📖 3. Quản lý Sổ Báo Giảng cá nhân",
+    ]
+
+    st.markdown("##### 👥 QUẢN LÝ CHUYÊN MÔN CỦA TỔ")
+    menu_to = [
+        "📚 4. Quản lý Phân phối chương trình (PPCT)",
+        "👥 5. Duyệt Sổ Báo Giảng & Nghỉ bù của Tổ",
+        "📊 6. Thống Kê & Đối Chiếu Giờ Dạy Của Tổ",
+        "👥 7. Quản lý DS Giáo viên trong Tổ",
+        "🔑 8. Đổi mật khẩu cá nhân",
+    ]
+
+    selected_menu = st.radio(
+        "CHỌN CHỨC NĂNG THAO TÁC:", options=menu_canhan + menu_to
     )
 
+    st.divider()
+    if st.button(
+        "🚪 Đăng xuất hệ thống", type="primary", use_container_width=True
+    ):
+      st.session_state.clear()
+      st.rerun()
 
-class ToTruongDashboardWindow:
+  # Hiển thị màn hình chức năng tương ứng
+  if selected_menu == "📅 1. Xem Thời khóa biểu":
+    if render_xem_tkb:
+      render_xem_tkb(session)
+    else:
+      st.info("Module xem Thời khóa biểu đang được đồng bộ.")
 
-    def __init__(self, session):
-        self.session = session
-        self.root = tk.Tk() if not tk._default_root else tk.Toplevel()
+  elif selected_menu == "📝 2. Đăng ký Biến động (Nghỉ/Bù/Thay/HSG)":
+    render_bien_dong_lich_day(session)
 
-        tengv = get_val(session, "tengv", "Giáo viên")
-        to_bm = get_val(session, "to_bo_mon", "Chuyên môn")
+  elif selected_menu == "📖 3. Quản lý Sổ Báo Giảng cá nhân":
+    render_so_bao_giang_ca_nhan(session)
 
-        self.root.title(f"Quản Lý Báo Giảng - {tengv} [TỔ TRƯỞNG]")
-        self.root.geometry("520x620")
-        self.root.resizable(False, False)
+  elif selected_menu == "📚 4. Quản lý Phân phối chương trình (PPCT)":
+    render_quan_ly_ppct(session)
 
-        # Tiêu đề lời chào
-        tk.Label(
-            self.root,
-            text=f"Xin chào: {tengv}",
-            font=("Arial", 14, "bold"),
-            fg="#1a5276",
-        ).pack(pady=(15, 2))
-        tk.Label(
-            self.root,
-            text=f"Tổ bộ môn: {to_bm}",
-            font=("Arial", 11, "italic"),
-            fg="#555",
-        ).pack(pady=(0, 5))
+  elif selected_menu == "👥 5. Duyệt Sổ Báo Giảng & Nghỉ bù của Tổ":
+    if render_duyet_so_bao_giang:
+      render_duyet_so_bao_giang(session)
+    else:
+      st.info("Module Duyệt Sổ báo giảng đang được đồng bộ.")
 
-        # Nút Đổi mật khẩu cá nhân
-        tk.Button(
-            self.root,
-            text="🔑 Đổi mật khẩu cá nhân",
-            bg="#fcf3cf",
-            font=("Arial", 9, "bold"),
-            command=lambda: open_single_window(
-                "WIN_TT_DOI_MK", DoiMatKhauWindow, self.session, self.root
-            ),
-        ).pack(pady=5)
+  elif selected_menu == "📊 6. Thống Kê & Đối Chiếu Giờ Dạy Của Tổ":
+    render_admin_thong_ke_gio(session)
 
-        # --- NHÓM 1: CÔNG VIỆC CÁ NHÂN ---
-        lbl_gr1 = tk.LabelFrame(
-            self.root,
-            text=" 📖 CÔNG VIỆC GIẢNG DẠY CÁ NHÂN ",
-            font=("Arial", 10, "bold"),
-            fg="#2e4053",
-            padx=15,
-            pady=8,
-        )
-        lbl_gr1.pack(fill=tk.X, padx=20, pady=5)
+  elif selected_menu == "👥 7. Quản lý DS Giáo viên trong Tổ":
+    render_quan_ly_giao_vien(session)
 
-        tk.Button(
-            lbl_gr1,
-            text="📅 1. Xem Thời khóa biểu",
-            font=("Arial", 10),
-            height=2,
-            command=lambda: open_single_window(
-                "WIN_TKB", XemTKBWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        tk.Button(
-            lbl_gr1,
-            text="📝 2. Đăng ký Biến động (Nghỉ / Bù / Thay / BDHSG)",
-            font=("Arial", 10),
-            height=2,
-            command=lambda: open_single_window(
-                "WIN_BIEN_DONG", BienDongLichDayWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        tk.Button(
-            lbl_gr1,
-            text="📖 3. Quản lý Sổ Báo Giảng cá nhân",
-            font=("Arial", 10),
-            height=2,
-            bg="#e8f8f5",
-            command=lambda: open_single_window(
-                "WIN_BAO_GIANG", SoBaoGiangCaNhanWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        # --- NHÓM 2: QUẢN LÝ CHUYÊN MÔN CỦA TỔ ---
-        lbl_gr2 = tk.LabelFrame(
-            self.root,
-            text=" 👥 QUẢN LÝ CHUYÊN MÔN CỦA TỔ ",
-            font=("Arial", 10, "bold"),
-            fg="#784212",
-            padx=15,
-            pady=8,
-        )
-        lbl_gr2.pack(fill=tk.X, padx=20, pady=5)
-
-        tk.Button(
-            lbl_gr2,
-            text="📚 4. Quản lý Phân phối chương trình (PPCT)",
-            font=("Arial", 10),
-            height=2,
-            command=lambda: open_single_window(
-                "WIN_QUAN_LY_PPCT", QuanLyPPCTWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        tk.Button(
-            lbl_gr2,
-            text="👥 5. Duyệt Sổ Báo Giảng & Nghỉ bù của Tổ",
-            font=("Arial", 10, "bold"),
-            height=2,
-            bg="#fef9e7",
-            command=lambda: open_single_window(
-                "WIN_DUYET_SBG", DuyetSBGWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        tk.Button(
-            lbl_gr2,
-            text="📊 6. Thống Kê & Đối Chiếu Giờ Dạy Của Tổ",
-            font=("Arial", 10, "bold"),
-            height=2,
-            bg="#ebf5fb",
-            fg="#1b4f72",
-            command=lambda: open_single_window(
-                "WIN_ADMIN_THONG_KE_GIO", AdminThongKeGioWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-        tk.Button(
-            lbl_gr2,
-            text="👥 7. Quản lý DS Giáo viên trong Tổ (Xem MK & Sửa cột)",
-            font=("Arial", 10, "bold"),
-            height=2,
-            bg="#d4efdf",
-            command=lambda: open_single_window(
-                "WIN_QUAN_LY_GV", QuanLyGiaoVienWindow, self.session
-            ),
-        ).pack(fill=tk.X, pady=3)
-
-    def run(self):
-        self.root.mainloop()
+  elif selected_menu == "🔑 8. Đổi mật khẩu cá nhân":
+    render_doi_mat_khau(session)
 
 
 if __name__ == "__main__":
-    demo_session = {
+  # Demo chạy thử giao diện Dashboard
+  if "user_session" not in st.session_state:
+    st.session_state.user_session = {
         "magv": "GV01",
         "tengv": "TUYÊN",
         "to_bo_mon": "Toán",
         "role": "TO_TRUONG",
     }
-    app = ToTruongDashboardWindow(demo_session)
-    app.run()
+  render_to_truong_dashboard(st.session_state.user_session)

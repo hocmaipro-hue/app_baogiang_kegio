@@ -2,12 +2,14 @@
 import psycopg2
 from config import DB_URI
 
+
 def create_all_tables():
-    try:
-        connection = psycopg2.connect(DB_URI)
-        cursor = connection.cursor()
-        
-        create_queries = """
+  """Khởi tạo cấu trúc 8 bảng cơ bản trên CSDL PostgreSQL (Supabase)."""
+  try:
+    connection = psycopg2.connect(DB_URI)
+    cursor = connection.cursor()
+
+    create_queries = """
         -- 1. Bảng Giáo viên & Phân quyền
         CREATE TABLE IF NOT EXISTS giao_vien (
             magv VARCHAR(50) PRIMARY KEY,
@@ -99,15 +101,18 @@ def create_all_tables():
             so_tuan INT NOT NULL
         );
         """
-        cursor.execute(create_queries)
-        connection.commit()
-        print("🎉 Khởi tạo cấu trúc 8 bảng thành công trên Supabase!")
-    except Exception as error:
-        print(f"❌ Lỗi khởi tạo bảng: {error}")
-    finally:
-        if 'connection' in locals() and connection:
-            cursor.close()
-            connection.close()
+    cursor.execute(create_queries)
+    connection.commit()
+    print("🎉 Khởi tạo cấu trúc 8 bảng thành công trên Supabase!")
+    return True
+  except Exception as error:
+    print(f"❌ Lỗi khởi tạo bảng: {error}")
+    return False
+  finally:
+    if "connection" in locals() and connection:
+      cursor.close()
+      connection.close()
+
 
 if __name__ == "__main__":
-    create_all_tables()
+  create_all_tables()

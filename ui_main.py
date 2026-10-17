@@ -1,158 +1,135 @@
-# ui_main.py - DÀNH RIÊNG CHO GIÁO VIÊN THƯỜNG
-import tkinter as tk
-from window_manager import open_single_window
+import streamlit as st
+from ui_bien_dong_lich_day import render_bien_dong_lich_day
+from ui_day_bu import render_day_bu
+from ui_day_thay_hsg import render_day_thay_hsg
+from ui_doi_mat_khau import render_doi_mat_khau
+from ui_ke_khai_bieu_1c import render_ke_khai_bieu_1c
+
+# Import các giao diện đã được chuyển đổi sang Streamlit
+# (Giả định các file module giao diện đã có hàm render tương ứng)
+try:
+  from ui_xem_tkb import render_xem_tkb
+except ImportError:
+  render_xem_tkb = None
+
+try:
+  from ui_so_bao_giang_ca_nhan import render_so_bao_giang_ca_nhan
+except ImportError:
+  render_so_bao_giang_ca_nhan = None
+
+try:
+  from ui_pkg import render_pkg
+except ImportError:
+  render_pkg = None
 
 
-class MainWindow:
+def inject_custom_css():
+  st.markdown(
+      """
+    <style>
+    /* CSS Chung cho giao diện Streamlit */
+    .stRadio label {
+        font-weight: 600 !important;
+        font-size: 15px !important;
+    }
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #d0d7de !important;
+        padding: 8px 18px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.25s ease-in-out !important;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        border-color: #1a5276 !important;
+        color: #1a5276 !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #219150, #27ae60) !important;
+        color: white !important;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
 
-    def __init__(self, session):
-        self.session = session
-        self.root = tk.Tk()
-        self.root.title(
-            f"Quản Lý Báo Giảng - {session.get('tengv')} [GIÁO VIÊN]"
-        )
-        self.root.geometry("520x530")
-        self.root.resizable(False, False)
 
-        # Lời chào
-        tk.Label(
-            self.root,
-            text=f"Phong xin chào Thầy/Cô: {session.get('tengv')}",
-            font=("Arial", 13, "bold"),
-            fg="#1a5276",
-        ).pack(pady=(15, 2))
-        tk.Label(
-            self.root,
-            text=f"Tổ bộ môn: {session.get('to_bo_mon')}",
-            font=("Arial", 11, "italic"),
-            fg="#555",
-        ).pack(pady=(0, 10))
+def render_main_teacher(session):
+  inject_custom_css()
+  tengv = session.get("tengv", "Giáo viên")
+  to_bm = session.get("to_bo_mon", "Toán")
 
-        # Khung chứa các nút chức năng của Giáo viên
-        frame_btn = tk.LabelFrame(
-            self.root,
-            text=" CHỨC NĂNG GIẢNG DẠY ",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=10,
-        )
-        frame_btn.pack(fill=tk.BOTH, expand=True, padx=25, pady=5)
+  # Sidebar menu điều hướng
+  with st.sidebar:
+    st.markdown(
+        f"<h3 style='color: #1a5276;'>Xin chào,</h3><h4>{tengv}</h4>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<p style='color: #555; font-style: italic;'>Tổ bộ môn: {to_bm}</p>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
 
-        # 1. Xem TKB cá nhân
-        tk.Button(
-            frame_btn,
-            text="📅 1. Xem Thời khóa biểu cá nhân",
-            font=("Arial", 10),
-            height=1,
-            command=self.open_tkb,
-        ).pack(fill=tk.X, pady=3)
+    menu_chon = st.radio(
+        "CHỨC NĂNG GIẢNG DẠY",
+        options=[
+            "📅 Xem TKB cá nhân",
+            "⛔ Báo Nghỉ dạy",
+            "🟢 Đăng ký Dạy Bù",
+            "🟡 Đăng ký Dạy Thay & HSG",
+            "📖 Sổ Báo Giảng cá nhân",
+            "📊 Xem Kê khai giờ (PKG)",
+            "🔑 Đổi mật khẩu",
+        ],
+    )
 
-        # 2. BÁO NGHỈ DẠY (CÓ NGHỈ TẾT)
-        tk.Button(
-            frame_btn,
-            text="⛔ 2. Báo Nghỉ dạy (Nghỉ việc riêng / Nghỉ Tết)",
-            font=("Arial", 10, "bold"),
-            height=1,
-            bg="#fadbd8",
-            fg="#900c3f",
-            relief="groove",
-            command=self.open_bao_nghi,
-        ).pack(fill=tk.X, pady=3)
+    st.divider()
+    if st.button(
+        "🚪 Đăng xuất", type="primary", use_container_width=True
+    ):
+      st.session_state.clear()
+      st.rerun()
 
-        # 3. ĐĂNG KÝ DẠY BÙ
-        tk.Button(
-            frame_btn,
-            text="🟢 3. Đăng ký Dạy Bù",
-            font=("Arial", 10, "bold"),
-            height=1,
-            bg="#d4efdf",
-            fg="#1e8449",
-            relief="groove",
-            command=self.open_day_bu,
-        ).pack(fill=tk.X, pady=3)
+  # Hiển thị nội dung tương ứng theo lựa chọn trên Sidebar
+  if menu_chon == "📅 Xem TKB cá nhân":
+    if render_xem_tkb:
+      render_xem_tkb(session)
+    else:
+      st.info(
+          "Module `ui_xem_tkb.py` đang được cập nhật hiển thị Streamlit."
+      )
 
-        # 4. ĐĂNG KÝ DẠY THAY & BDHSG
-        tk.Button(
-            frame_btn,
-            text="🟡 4. Đăng ký Dạy Thay & Bồi Dưỡng HSG",
-            font=("Arial", 10, "bold"),
-            height=1,
-            bg="#fcf3cf",
-            fg="#7d6608",
-            relief="groove",
-            command=self.open_day_thay,
-        ).pack(fill=tk.X, pady=3)
+  elif menu_chon == "⛔ Báo Nghỉ dạy":
+    render_bien_dong_lich_day(session)
 
-        # 5. Sổ báo giảng cá nhân
-        tk.Button(
-            frame_btn,
-            text="📖 5. Quản lý Sổ Báo Giảng cá nhân",
-            font=("Arial", 10, "bold"),
-            height=1,
-            bg="#e8f8f5",
-            fg="#1a5276",
-            command=self.open_bao_giang,
-        ).pack(fill=tk.X, pady=3)
+  elif menu_chon == "🟢 Đăng ký Dạy Bù":
+    render_day_bu(session)
 
-        # 6. Kê khai giờ dạy
-        tk.Button(
-            frame_btn,
-            text="📊 6. Xem Kê khai giờ (PKG cá nhân)",
-            font=("Arial", 10),
-            height=1,
-            command=self.open_pkg,
-        ).pack(fill=tk.X, pady=3)
+  elif menu_chon == "🟡 Đăng ký Dạy Thay & HSG":
+    render_day_thay_hsg(session)
 
-        # Nút Đổi mật khẩu
-        tk.Button(
-            self.root,
-            text="🔑 Đổi mật khẩu",
-            bg="#f2f3f4",
-            font=("Arial", 9, "bold"),
-            command=self.open_doi_mat_khau,
-        ).pack(pady=8)
+  elif menu_chon == "📖 Sổ Báo Giảng cá nhân":
+    if render_so_bao_giang_ca_nhan:
+      render_so_bao_giang_ca_nhan(session)
+    else:
+      st.info(
+          "Module `ui_so_bao_giang_ca_nhan.py` đang được cập nhật hiển thị"
+          " Streamlit."
+      )
 
-    # =========================================================================
-    # CÁC HÀM MỞ CỬA SỔ: CHỐNG MỞ TRÙNG 100% VÀ LUÔN NỔI LÊN TRÊN CÙNG
-    # =========================================================================
-    def open_tkb(self):
-        from ui_xem_tkb import XemTKBWindow
+  elif menu_chon == "📊 Xem Kê khai giờ (PKG)":
+    # Có thể linh hoạt gọi biểu 1C hoặc PKG cá nhân tùy chọn
+    render_ke_khai_bieu_1c(session)
 
-        open_single_window("WIN_TKB", XemTKBWindow, self.session)
-
-    def open_bao_nghi(self):
-        from ui_bao_nghi import BaoNghiWindow
-
-        open_single_window("WIN_BAO_NGHI", BaoNghiWindow, self.session)
-
-    def open_day_bu(self):
-        from ui_day_bu import DayBuWindow
-
-        open_single_window("WIN_DAY_BU", DayBuWindow, self.session)
-
-    def open_day_thay(self):
-        from ui_day_thay_hsg import DayThayHSGWindow
-
-        open_single_window("WIN_DAY_THAY", DayThayHSGWindow, self.session)
-
-    def open_bao_giang(self):
-        from ui_so_bao_giang_ca_nhan import SoBaoGiangCaNhanWindow
-
-        open_single_window(
-            "WIN_BAO_GIANG", SoBaoGiangCaNhanWindow, self.session
-        )
-
-    def open_pkg(self):
-        from ui_pkg import PkgWindow
-
-        open_single_window("WIN_PKG", PkgWindow, self.session)
-
-    def open_doi_mat_khau(self):
-        from ui_doi_mat_khau import DoiMatKhauWindow
-
-        open_single_window(
-            "WIN_DOI_MK", DoiMatKhauWindow, self.session, self.root
-        )
-
-    def run(self):
-        self.root.mainloop()
+  elif menu_chon == "🔑 Đổi mật khẩu":
+    render_doi_mat_khau(session)

@@ -1,183 +1,233 @@
-# ui_dieu_chinh_ppct.py
-import tkinter as tk
-from tkinter import ttk, messagebox
+import pandas as pd
 import psycopg2
+import streamlit as st
 from config import DB_URI
 
-def get_val(s, k, d=""): return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-class DieuChinhPPCTWindow:
-    def __init__(self, session, callback_refresh=None):
-        self.session = session
-        self.callback_refresh = callback_refresh
-        self.magv = get_val(session, 'magv', '')
-        self.tengv = get_val(session, 'tengv', 'Giáo viên')
-        self.to_bm = get_val(session, 'to_bo_mon', 'Toán')
+def inject_custom_css():
+  st.markdown(
+      """
+    <style>
+    /* CSS Nút tròn mềm mại chuẩn Mobile & Desktop */
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #d0d7de !important;
+        padding: 8px 18px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.25s ease-in-out !important;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        border-color: #27ae60 !important;
+        color: #27ae60 !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #219150, #27ae60) !important;
+        color: white !important;
+    }
+    .stTextInput input, .stSelectbox div, .stNumberInput input {
+        border-radius: 12px !important;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
 
-        self.window = tk.Toplevel()
-        self.window.title(f"Cài đặt mốc khởi điểm PPCT - {self.tengv}")
-        self.window.geometry("750x450")
-        self.window.grab_set() # Giữ focus
 
-        self.ensure_table_exists()
+def get_val(s, k, d=""):
+  return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-        # FORM NHẬP LIỆU
-        frm_input = tk.LabelFrame(self.window, text=" Thiết lập mốc bài dạy khi nhận lớp mới ", 
-                                  padx=10, pady=10, font=("Arial", 9, "bold"))
-        frm_input.pack(fill=tk.X, padx=10, pady=5)
 
-        tk.Label(frm_input, text="Lớp dạy:").grid(row=0, column=0, sticky="w", pady=4)
-        self.cbo_lop = ttk.Combobox(frm_input, width=10, state="readonly")
-        self.cbo_lop.grid(row=0, column=1, sticky="w", pady=4, padx=5)
+def ensure_table_exists():
+  try:
+    conn = psycopg2.connect(DB_URI)
+    cur = conn.cursor()
+    cur.execute("""
+            CREATE TABLE IF NOT EXISTS cau_hinh_moc_ppct (
+                id SERIAL PRIMARY KEY,
+                magv VARCHAR(50),
+                lop VARCHAR(20),
+                phan_mon VARCHAR(100),
+                tu_tuan INT,
+                tiet_bat_dau INT,
+                UNIQUE(magv, lop, phan_mon, tu_tuan)
+            );
+        """)
+    conn.commit()
+    cur.close()
+    conn.close()
+  except Exception as e:
+    print("Lỗi tạo bảng mốc PPCT:", e)
 
-        tk.Label(frm_input, text="Phân môn:").grid(row=0, column=2, sticky="w", pady=4, padx=(10, 0))
-        self.cbo_pm = ttk.Combobox(frm_input, width=18, state="readonly")
-        self.cbo_pm.grid(row=0, column=3, sticky="w", pady=4, padx=5)
 
-        tk.Label(frm_input, text="Từ Tuần:").grid(row=1, column=0, sticky="w", pady=4)
-        self.spn_tuan = ttk.Spinbox(frm_input, from_=1, to=40, width=8)
-        self.spn_tuan.set(20)
-        self.spn_tuan.grid(row=1, column=1, sticky="w", pady=4, padx=5)
+def render_dieu_chinh_ppct(session):
+  inject_custom_css()
+  ensure_table_exists()
 
-        tk.Label(frm_input, text="Bắt đầu từ Tiết PPCT:").grid(row=1, column=2, sticky="w", pady=4, padx=(10, 0))
-        self.spn_tiet = ttk.Spinbox(frm_input, from_=1, to=200, width=10)
-        self.spn_tiet.set(1)
-        self.spn_tiet.grid(row=1, column=3, sticky="w", pady=4, padx=5)
+  magv = get_val(session, "magv", "")
+  tengv = get_val(session, "tengv", "Giáo viên")
+  to_bm = get_val(session, "to_bo_mon", "Toán")
 
-        tk.Button(frm_input, text="💾 LƯU THIẾT LẬP", bg="#27ae60", fg="white", font=("Arial", 9, "bold"),
-                  padx=10, command=self.luu_moc).grid(row=1, column=4, padx=15, pady=4)
+  st.markdown(
+      f"<h4 style='text-align: center; color: #27ae60;'>Cài đặt mốc khởi điểm"
+      f" PPCT - {tengv}</h4>",
+      unsafe_allow_html=True,
+  )
 
-        # BẢNG DANH SÁCH MỐC ĐÃ THIẾT LẬP
-        frm_table = tk.Frame(self.window)
-        frm_table.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+  # Lấy danh sách lớp của giáo viên
+  def get_lops():
+    try:
+      conn = psycopg2.connect(DB_URI)
+      cur = conn.cursor()
+      cur.execute(
+          "SELECT DISTINCT lop FROM thoi_khoa_bieu WHERE magv = %s ORDER BY lop",
+          (magv,),
+      )
+      lops = [r[0].strip() for r in cur.fetchall() if r[0]]
+      cur.close()
+      conn.close()
+      return lops if lops else [""]
+    except Exception:
+      return [""]
 
-        cols = ("id", "lop", "phan_mon", "tu_tuan", "tiet_bat_dau")
-        self.tree = ttk.Treeview(frm_table, columns=cols, show="headings", height=8)
-        self.tree.heading("id", text="ID")
-        self.tree.heading("lop", text="Lớp")
-        self.tree.heading("phan_mon", text="Phân môn")
-        self.tree.heading("tu_tuan", text="Áp dụng từ Tuần")
-        self.tree.heading("tiet_bat_dau", text="Tiết PPCT bắt đầu")
-
-        self.tree.column("id", width=40, anchor="center")
-        self.tree.column("lop", width=80, anchor="center")
-        self.tree.column("phan_mon", width=160, anchor="center")
-        self.tree.column("tu_tuan", width=120, anchor="center")
-        self.tree.column("tiet_bat_dau", width=120, anchor="center")
-
-        sb = ttk.Scrollbar(frm_table, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb.pack(side=tk.RIGHT, fill=tk.Y)
-
-        bot = tk.Frame(self.window)
-        bot.pack(pady=6)
-        tk.Button(bot, text="❌ Xóa mốc đang chọn", bg="#fadbd8", command=self.xoa_moc).pack(side=tk.LEFT, padx=5)
-        tk.Button(bot, text="Đóng", width=10, command=self.window.destroy).pack(side=tk.LEFT, padx=5)
-
-        self.load_lop_va_mon()
-        self.load_data()
-
-    def ensure_table_exists(self):
-        try:
-            conn = psycopg2.connect(DB_URI)
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS cau_hinh_moc_ppct (
-                    id SERIAL PRIMARY KEY,
-                    magv VARCHAR(50),
-                    lop VARCHAR(20),
-                    phan_mon VARCHAR(100),
-                    tu_tuan INT,
-                    tiet_bat_dau INT,
-                    UNIQUE(magv, lop, phan_mon, tu_tuan)
-                );
-            """)
-            conn.commit()
-            cur.close(); conn.close()
-        except Exception as e:
-            print("Lỗi tạo bảng mốc PPCT:", e)
-
-    def load_lop_va_mon(self):
-        try:
-            conn = psycopg2.connect(DB_URI)
-            cur = conn.cursor()
-            cur.execute("SELECT DISTINCT lop FROM thoi_khoa_bieu WHERE magv = %s ORDER BY lop", (self.magv,))
-            lops = [r[0].strip() for r in cur.fetchall() if r[0]]
-            self.cbo_lop['values'] = lops
-            if lops: self.cbo_lop.current(0)
-
-            cur.execute("""
+  # Lấy danh sách phân môn
+  def get_pms():
+    try:
+      conn = psycopg2.connect(DB_URI)
+      cur = conn.cursor()
+      cur.execute(
+          """
                 SELECT DISTINCT COALESCE(NULLIF(TRIM(phan_mon), ''), mon)
                 FROM phan_phoi_chuong_trinh
                 WHERE UPPER(mon) = UPPER(%s) OR %s ILIKE '%%' || mon || '%%' OR UPPER(mon) LIKE '%%TOÁN%%'
                 ORDER BY 1 ASC;
-            """, (self.to_bm, self.to_bm))
-            pms = [r[0].strip() for r in cur.fetchall() if r[0]]
-            self.cbo_pm['values'] = pms
-            if pms: self.cbo_pm.current(0)
-            cur.close(); conn.close()
-        except Exception: pass
+            """,
+          (to_bm, to_bm),
+      )
+      pms = [r[0].strip() for r in cur.fetchall() if r[0]]
+      cur.close()
+      conn.close()
+      return pms if pms else ["Toán"]
+    except Exception:
+      return ["Toán"]
 
-    def load_data(self):
-        for r in self.tree.get_children(): self.tree.delete(r)
+  lops = get_lops()
+  pms = get_pms()
+
+  # ================= FORM THIẾT LẬP MỐC =================
+  with st.form("form_moc_ppct"):
+    st.markdown("##### 📌 Thiết lập mốc bài dạy khi nhận lớp mới")
+
+    c1, c2 = st.columns(2)
+    with c1:
+      lop_chon = st.selectbox("Lớp dạy:", options=lops)
+    with c2:
+      pm_chon = st.selectbox("Phân môn:", options=pms)
+
+    c3, c4 = st.columns(2)
+    with c3:
+      tuan_val = st.number_input("Từ Tuần:", min_value=1, max_value=40, value=20)
+    with c4:
+      tiet_val = st.number_input(
+          "Bắt đầu từ Tiết PPCT:", min_value=1, max_value=200, value=1
+      )
+
+    submitted = st.form_submit_button(
+        "💾 LƯU THIẾT LẬP", type="primary", use_container_width=True
+    )
+
+    if submitted:
+      if not lop_chon or not pm_chon:
+        st.warning("Vui lòng chọn Lớp và Phân môn!")
+      else:
         try:
-            conn = psycopg2.connect(DB_URI)
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, lop, phan_mon, tu_tuan, tiet_bat_dau 
-                FROM cau_hinh_moc_ppct WHERE magv = %s 
-                ORDER BY lop, phan_mon, tu_tuan ASC
-            """, (self.magv,))
-            for r in cur.fetchall():
-                self.tree.insert("", tk.END, values=r)
-            cur.close(); conn.close()
+          conn = psycopg2.connect(DB_URI)
+          cur = conn.cursor()
+          cur.execute(
+              """
+                        INSERT INTO cau_hinh_moc_ppct (magv, lop, phan_mon, tu_tuan, tiet_bat_dau)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (magv, lop, phan_mon, tu_tuan)
+                        DO UPDATE SET tiet_bat_dau = EXCLUDED.tiet_bat_dau;
+                    """,
+              (magv, lop_chon, pm_chon, int(tuan_val), int(tiet_val)),
+          )
+          conn.commit()
+          cur.close()
+          conn.close()
+          st.success(
+              f"Đã lưu mốc: Lớp {lop_chon} ({pm_chon}) từ Tuần {tuan_val} bắt"
+              f" đầu từ Tiết {tiet_val}!"
+          )
+          st.rerun()
         except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể tải danh sách mốc: {e}")
+          st.error(f"Không thể lưu mốc: {e}")
 
-    def luu_moc(self):
-        lop = self.cbo_lop.get().strip()
-        pm = self.cbo_pm.get().strip()
-        try:
-            tuan = int(self.spn_tuan.get())
-            tiet = int(self.spn_tiet.get())
-        except ValueError:
-            messagebox.showwarning("Lỗi", "Tuần và Tiết bắt đầu phải là số nguyên!")
-            return
+  st.divider()
 
-        if not lop or not pm:
-            messagebox.showwarning("Thiếu thông tin", "Vui lòng chọn Lớp và Phân môn!")
-            return
+  # ================= BẢNG DANH SÁCH MỐC ĐÃ THIẾT LẬP =================
+  st.markdown("##### 📋 Danh sách các mốc PPCT đã thiết lập")
+  try:
+    conn = psycopg2.connect(DB_URI)
+    cur = conn.cursor()
+    cur.execute(
+        """
+            SELECT id, lop, phan_mon, tu_tuan, tiet_bat_dau 
+            FROM cau_hinh_moc_ppct WHERE magv = %s 
+            ORDER BY lop, phan_mon, tu_tuan ASC
+        """,
+        (magv,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-        try:
+    if rows:
+      df_moc = pd.DataFrame(
+          rows,
+          columns=[
+              "ID",
+              "Lớp",
+              "Phân môn",
+              "Áp dụng từ Tuần",
+              "Tiết PPCT bắt đầu",
+          ],
+      )
+      st.dataframe(df_moc, use_container_width=True, hide_index=True)
+
+      c_del1, c_del2 = st.columns([2, 1])
+      with c_del1:
+        rec_id_xoa = st.number_input(
+            "Nhập ID mốc cần xóa:", min_value=1, step=1, key="input_xoa_moc"
+        )
+      with c_del2:
+        st.write("")
+        st.write("")
+        if st.button("❌ Xóa mốc này", type="primary", use_container_width=True):
+          try:
             conn = psycopg2.connect(DB_URI)
             cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO cau_hinh_moc_ppct (magv, lop, phan_mon, tu_tuan, tiet_bat_dau)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (magv, lop, phan_mon, tu_tuan)
-                DO UPDATE SET tiet_bat_dau = EXCLUDED.tiet_bat_dau;
-            """, (self.magv, lop, pm, tuan, tiet))
+            cur.execute(
+                "DELETE FROM cau_hinh_moc_ppct WHERE id = %s AND magv = %s",
+                (int(rec_id_xoa), magv),
+            )
             conn.commit()
-            cur.close(); conn.close()
-            messagebox.showinfo("Thành công", f"Đã lưu mốc: Lớp {lop} ({pm}) từ Tuần {tuan} sẽ bắt đầu từ Tiết {tiet}!")
-            self.load_data()
-            if self.callback_refresh: self.callback_refresh()
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể lưu mốc: {e}")
-
-    def xoa_moc(self):
-        sel = self.tree.selection()
-        if not sel: return
-        rec_id = self.tree.item(sel[0], 'values')[0]
-        if messagebox.askyesno("Xác nhận", "Xóa thiết lập mốc này?"):
-            try:
-                conn = psycopg2.connect(DB_URI)
-                cur = conn.cursor()
-                cur.execute("DELETE FROM cau_hinh_moc_ppct WHERE id = %s AND magv = %s", (rec_id, self.magv))
-                conn.commit()
-                cur.close(); conn.close()
-                self.load_data()
-                if self.callback_refresh: self.callback_refresh()
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể xóa: {e}")
+            cur.close()
+            conn.close()
+            st.success("Đã xóa thiết lập mốc thành công!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Không thể xóa: {e}")
+    else:
+      st.info("Chưa có thiết lập mốc PPCT nào.")
+  except Exception as e:
+    st.error(f"Lỗi tải dữ liệu: {e}")

@@ -1,91 +1,123 @@
-# ui_doi_mat_khau.py
-import tkinter as tk
-from tkinter import messagebox
 import psycopg2
+import streamlit as st
 from config import DB_URI
 
-def get_val(s, k, d=""): return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-class DoiMatKhauWindow:
-    def __init__(self, session, parent=None):
-        self.session = session
-        self.magv = get_val(session, 'magv', '')
-        self.tengv = get_val(session, 'tengv', 'Giáo viên')
+def inject_custom_css():
+  st.markdown(
+      """
+    <style>
+    /* CSS Nút tròn mềm mại chuẩn Mobile & Desktop */
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #d0d7de !important;
+        padding: 8px 18px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.25s ease-in-out !important;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        border-color: #1a5276 !important;
+        color: #1a5276 !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #219150, #27ae60) !important;
+        color: white !important;
+    }
+    .stTextInput input {
+        border-radius: 12px !important;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
 
-        self.window = tk.Toplevel(parent) if parent else tk.Toplevel()
-        self.window.title(f"Đổi Mật Khẩu - {self.tengv}")
-        self.window.geometry("380x260")
-        self.window.resizable(False, False)
-        self.window.grab_set()  # Khóa màn hình cha lại khi đang đổi mật khẩu
 
-        # Tiêu đề
-        tk.Label(self.window, text="ĐỔI MẬT KHẨU ĐĂNG NHẬP", 
-                 font=("Arial", 11, "bold"), fg="#1a5276").pack(pady=(15, 5))
-        tk.Label(self.window, text=f"Tài khoản: {self.tengv} ({self.magv})", 
-                 font=("Arial", 9, "italic"), fg="#555").pack(pady=(0, 10))
+def get_val(s, k, d=""):
+  return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-        # Khung nhập liệu
-        f = tk.Frame(self.window, padx=20)
-        f.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(f, text="Mật khẩu hiện tại:").grid(row=0, column=0, sticky="w", pady=4)
-        self.txt_old = tk.Entry(f, width=22, show="*")
-        self.txt_old.grid(row=0, column=1, pady=4)
+def render_doi_mat_khau(session):
+  inject_custom_css()
+  magv = get_val(session, "magv", "")
+  tengv = get_val(session, "tengv", "Giáo viên")
 
-        tk.Label(f, text="Mật khẩu mới:").grid(row=1, column=0, sticky="w", pady=4)
-        self.txt_new = tk.Entry(f, width=22, show="*")
-        self.txt_new.grid(row=1, column=1, pady=4)
+  st.markdown(
+      "<h4 style='text-align: center; color: #1a5276;'>ĐỔI MẬT KHẨU ĐĂNG"
+      " NHẬP</h4>",
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      f"<p style='text-align: center; color: #555; font-style: italic;'>Tài"
+      f" khoản: {tengv} ({magv})</p>",
+      unsafe_allow_html=True,
+  )
 
-        tk.Label(f, text="Nhập lại MK mới:").grid(row=2, column=0, sticky="w", pady=4)
-        self.txt_confirm = tk.Entry(f, width=22, show="*")
-        self.txt_confirm.grid(row=2, column=1, pady=4)
+  # Form đổi mật khẩu
+  with st.form("form_doi_mk"):
+    p_old = st.text_input("Mật khẩu hiện tại:", type="password", value="")
+    p_new = st.text_input("Mật khẩu mới:", type="password", value="")
+    p_confirm = st.text_input("Nhập lại MK mới:", type="password", value="")
 
-        # Nút bấm lưu
-        tk.Button(self.window, text="💾 Lưu Mật Khẩu Mới", bg="#d4efdf", font=("Arial", 9, "bold"), 
-                  command=self.xu_ly_doi_mat_khau).pack(pady=(5, 15))
+    submitted = st.form_submit_button(
+        "💾 Lưu Mật Khẩu Mới", type="primary", use_container_width=True
+    )
 
-    def xu_ly_doi_mat_khau(self):
-        p_old = self.txt_old.get().strip()
-        p_new = self.txt_new.get().strip()
-        p_conf = self.txt_confirm.get().strip()
+    if submitted:
+      p_old_clean = p_old.strip()
+      p_new_clean = p_new.strip()
+      p_conf_clean = p_confirm.strip()
 
-        if not p_old or not p_new or not p_conf:
-            messagebox.showwarning("Cảnh báo", "Vui lòng nhập đầy đủ cả 3 ô mật khẩu!")
-            return
-
-        if p_new != p_conf:
-            messagebox.showerror("Lỗi xác nhận", "Mật khẩu mới và Nhập lại mật khẩu không khớp nhau!")
-            return
-
-        if p_old == p_new:
-            messagebox.showwarning("Cảnh báo", "Mật khẩu mới không được trùng với mật khẩu cũ!")
-            return
-
+      if not p_old_clean or not p_new_clean or not p_conf_clean:
+        st.warning("Vui lòng nhập đầy đủ cả 3 ô mật khẩu!")
+      elif p_new_clean != p_conf_clean:
+        st.error(
+            "Mật khẩu mới và Nhập lại mật khẩu không khớp nhau!"
+        )
+      elif p_old_clean == p_new_clean:
+        st.warning(
+            "Mật khẩu mới không được trùng với mật khẩu cũ!"
+        )
+      else:
         conn = None
         try:
-            conn = psycopg2.connect(DB_URI)
-            cur = conn.cursor()
+          conn = psycopg2.connect(DB_URI)
+          cur = conn.cursor()
 
-            # 1. Kiểm tra mật khẩu cũ (dùng chính xác tên cột là matkhau)
-            cur.execute("SELECT matkhau FROM giao_vien WHERE magv = %s", (self.magv,))
-            row = cur.fetchone()
+          # 1. Kiểm tra mật khẩu cũ
+          cur.execute(
+              "SELECT matkhau FROM giao_vien WHERE magv = %s", (magv,)
+          )
+          row = cur.fetchone()
 
-            if not row or (row[0] and str(row[0]).strip() != p_old):
-                messagebox.showerror("Sai mật khẩu", "Mật khẩu hiện tại không chính xác!")
-                cur.close()
-                conn.close()
-                return
-
-            # 2. Cập nhật mật khẩu mới vào cột matkhau
-            cur.execute("UPDATE giao_vien SET matkhau = %s WHERE magv = %s", (p_new, self.magv))
+          if not row or (row[0] and str(row[0]).strip() != p_old_clean):
+            st.error("Mật khẩu hiện tại không chính xác!")
+            cur.close()
+            conn.close()
+          else:
+            # 2. Cập nhật mật khẩu mới
+            cur.execute(
+                "UPDATE giao_vien SET matkhau = %s WHERE magv = %s",
+                (p_new_clean, magv),
+            )
             conn.commit()
             cur.close()
             conn.close()
 
-            messagebox.showinfo("Thành công", "Đã đổi mật khẩu thành công!\nHãy ghi nhớ mật khẩu mới cho lần đăng nhập sau.")
-            self.window.destroy()
-
+            st.success(
+                "Đã đổi mật khẩu thành công!\nHãy ghi nhớ mật khẩu mới cho lần"
+                " đăng nhập sau."
+            )
         except Exception as e:
-            if conn:
-                conn.rollback()
-            messagebox.showerror("Lỗi kết nối", f"Không thể đổi mật khẩu: {e}")
+          if conn:
+            conn.rollback()
+          st.error(f"Không thể đổi mật khẩu: {e}")

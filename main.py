@@ -1,140 +1,165 @@
-# main.py
-import tkinter as tk
-from ui_login import LoginWindow
+import streamlit as st
+from models import create_all_tables
+from ui_login import render_login_page
+
+# 1. CẤU HÌNH TRANG STREAMLIT
+st.set_page_config(
+    page_title="Hệ Thống Quản Lý Giờ Dạy & Kê Khai - THPT Nguyễn Việt Hồng",
+    page_icon="🌸",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 
 
-def hien_thiep_an_yen(tengv, callback_tiep_tuc):
-    """Cửa sổ thiệp thơ an yên, màu sắc phong cảnh hữu tình, thư thái"""
-    thiep = tk.Toplevel()
-    thiep.title("🌸 Gửi Chút An Yên Đến Thầy/Cô")
-    thiep.geometry("560x370")
-    thiep.resizable(False, False)
-    thiep.configure(bg="#E8F8F5")  # Màu xanh ngọc pastel êm dịu
-
-    # Căn giữa màn hình máy tính
-    thiep.update_idletasks()
-    w = thiep.winfo_width()
-    h = thiep.winfo_height()
-    ws = thiep.winfo_screenwidth()
-    hs = thiep.winfo_screenheight()
-    x = (ws // 2) - (w // 2)
-    y = (hs // 2) - (h // 2)
-    thiep.geometry(f"{w}x{h}+{x}+{y}")
-
-    # Đưa lên trên cùng
-    thiep.lift()
-    thiep.attributes("-topmost", True)
-    thiep.focus_force()
-
-    # Khung thiệp bo viền trang nhã
-    khung = tk.Frame(
-        thiep, bg="#FFFFFF", relief="groove", bd=2, padx=20, pady=15
-    )
-    khung.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-
-    # Lời đề tặng
-    tk.Label(
-        khung,
-        text=f"🌿 Kính tặng Thầy/Cô: {tengv}",
-        font=("Times New Roman", 14, "bold"),
-        fg="#117A65",
-        bg="#FFFFFF",
-    ).pack(pady=(0, 10))
-
-    # 4 Câu thơ an nhiên (Font Times New Roman nghệ thuật)
-    tho_text = (
-        "“Bụi phấn bay bay mỉm miệng cười,\n"
-        "Bảng đen nâng bước tuổi đôi mươi.\n"
-        "Rời trang giáo án lòng thanh thản,\n"
-        "Một đóa an yên nở giữa đời.”"
-    )
-    tk.Label(
-        khung,
-        text=tho_text,
-        font=("Times New Roman", 13, "italic"),
-        fg="#1A5276",
-        bg="#F4F6F6",
-        padx=18,
-        pady=10,
-        relief="ridge",
-        bd=1,
-        justify="center",
-    ).pack(fill=tk.X, pady=5)
-
-    # Lời chúc nhẹ nhàng
-    tk.Label(
-        khung,
-        text="Chúc Thầy/Cô một ngày giảng dạy an vui, nhẹ nhàng và trọn vẹn!",
-        font=("Times New Roman", 12),
-        fg="#5D6D7E",
-        bg="#FFFFFF",
-    ).pack(pady=(10, 2))
-
-    # Tên tác giả
-    tk.Label(
-        khung,
-        text="— Thân ái: Tác giả Nguyễn Văn Phong —",
-        font=("Times New Roman", 11, "bold italic"),
-        fg="#B7950B",
-        bg="#FFFFFF",
-    ).pack(pady=(0, 12))
-
-    # Nút bấm vào phần mềm
-    def tiep_tuc():
-        thiep.destroy()
-        callback_tiep_tuc()
-
-    btn_ok = tk.Button(
-        khung,
-        text="🌸 Nhận An Yên & Bắt Đầu 🌸",
-        font=("Arial", 10, "bold"),
-        bg="#1ABC9C",
-        fg="white",
-        activebackground="#16A085",
-        activeforeground="white",
-        padx=15,
-        pady=5,
-        relief="raised",
-        cursor="hand2",
-        command=tiep_tuc,
-    )
-    btn_ok.pack()
-
-    # Bấm phím Enter hoặc phím Space cũng tự vào
-    thiep.bind("<Return>", lambda e: tiep_tuc())
-    thiep.bind("<space>", lambda e: tiep_tuc())
+# 2. TỰ ĐỘNG KHỞI TẠO CẤU TRÚC CSDL (SUPABASE) KHI CHẠY ỨNG DỤNG
+if "db_initialized" not in st.session_state:
+  try:
+    create_all_tables()
+    st.session_state["db_initialized"] = True
+  except Exception as e:
+    print(f"Lỗi khởi tạo CSDL: {e}")
 
 
-def launch_app(session):
-    role = session.get("role")
-    tengv = session.get("tengv", "Thầy/Cô")
+# 3. CSS TÙY CHỈNH NÚT BẤM TRÒN MỀM MẠI & GIAO DIỆN THIỆP THƠ
+def apply_custom_styles():
+  st.markdown(
+      """
+    <style>
+    /* CSS Nút bấm tròn mềm mại (Pill Buttons) */
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #1abc9c !important;
+        padding: 8px 22px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.08) !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 14px rgba(26, 188, 156, 0.3) !important;
+        background-color: #16a085 !important;
+        color: white !important;
+    }
 
-    def mo_giao_dien_chinh():
-        # NẾU LÀ TỔ TRƯỞNG
-        if role == "TO_TRUONG":
-            from ui_to_truong_dashboard import ToTruongDashboardWindow
+    /* CSS Thẻ Thiệp Thơ An Yên */
+    .thiep-an-yen {
+        background-color: #ffffff;
+        border: 2px solid #a3e4d7;
+        border-radius: 16px;
+        padding: 24px;
+        text-align: center;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.05);
+        margin-bottom: 25px;
+    }
+    .thiep-tho-box {
+        background-color: #f4f6f6;
+        border: 1px solid #d5dbdb;
+        border-radius: 12px;
+        padding: 15px;
+        margin: 15px 0;
+        font-family: 'Times New Roman', serif;
+        font-size: 17px;
+        font-style: italic;
+        color: #1a5276;
+        line-height: 1.6;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
 
-            app = ToTruongDashboardWindow(session)
-            app.run()
-        # NẾU LÀ ADMIN
-        elif role == "ADMIN":
-            from ui_admin import AdminWindow
 
-            app = AdminWindow(session)
-            app.run()
-        # CÒN LẠI (GIÁO VIÊN THƯỜNG)
-        else:
-            from ui_main import MainWindow
+# 4. DIALOG/MODAL THIỆP THƠ AN YÊN
+@st.dialog("🌸 Gửi Chút An Yên Đến Thầy/Cô")
+def hien_thiep_an_yen_dialog(tengv):
+  st.markdown(
+      f"<h4 style='color: #117a65; text-align: center; font-family: \"Times"
+      f" New Roman\";'>🌿 Kính tặng Thầy/Cô: {tengv}</h4>",
+      unsafe_allow_html=True,
+  )
 
-            app = MainWindow(session)
-            app.run()
+  tho_html = """
+    <div class="thiep-tho-box">
+        “Bụi phấn bay bay mỉm miệng cười,<br>
+        Bảng đen nâng bước tuổi đôi mươi.<br>
+        Rời trang giáo án lòng thanh thản,<br>
+        Một đóa an yên nở giữa đời.”
+    </div>
+    """
+  st.markdown(tho_html, unsafe_allow_html=True)
 
-    # Hiện thiệp thơ màu mè phong cảnh hữu tình trước, bấm nút sẽ vào giao diện chính
-    hien_thiep_an_yen(tengv, mo_giao_dien_chinh)
+  st.markdown(
+      "<p style='color: #5d6d7e; text-align: center; font-family: \"Times"
+      " New Roman\"; font-size: 15px;'>Chúc Thầy/Cô một ngày giảng dạy an vui,"
+      " nhẹ nhàng và trọn vẹn!</p>",
+      unsafe_allow_html=True,
+  )
+  st.markdown(
+      "<p style='color: #b7950b; text-align: center; font-family: \"Times"
+      " New Roman\"; font-weight: bold; font-style: italic;'>— Thân ái: Tác giả"
+      " Nguyễn Văn Phong —</p>",
+      unsafe_allow_html=True,
+  )
+
+  st.write("")
+  if st.button(
+      "🌸 Nhận An Yên & Bắt Đầu 🌸",
+      use_container_width=True,
+      type="primary",
+  ):
+    st.session_state["da_xem_thiep"] = True
+    st.rerun()
+
+
+# 5. HÀM ĐIỀU HƯỚNG MÀN HÌNH CHÍNH DỰA VÀO VAI TRÒ (ROLE)
+def render_main_dashboard(session):
+  role = session.get("role", "GV")
+  tengv = session.get("tengv", "Thầy/Cô")
+
+  # Tự động bật Thiệp An Yên lần đầu khi vừa đăng nhập thành công
+  if not st.session_state.get("da_xem_thiep", False):
+    hien_thiep_an_yen_dialog(tengv)
+
+  # Thanh Sidebar Điều hướng & Thông tin đăng nhập
+  st.sidebar.title("📌 Menu Chức Năng")
+  st.sidebar.markdown(f"👤 Tài khoản: **{tengv}**")
+  st.sidebar.markdown(f"🔑 Vai trò: **{role}**")
+
+  if st.sidebar.button("🚪 Đăng Xuất", use_container_width=True):
+    st.session_state.clear()
+    st.rerun()
+
+  st.sidebar.divider()
+
+  # Điều hướng màn hình theo vai trò (Role-based Routing)
+  if role == "ADMIN":
+    from ui_admin import render_admin_dashboard
+
+    render_admin_dashboard(session)
+
+  elif role == "TO_TRUONG":
+    from ui_to_truong_dashboard import render_to_truong_dashboard
+
+    render_to_truong_dashboard(session)
+
+  else:  # GIÁO VIÊN THƯỜNG ('GV')
+    from ui_main import render_user_dashboard
+
+    render_user_dashboard(session)
+
+
+# 6. ĐIỂM KHỞI CHẠY LỰA CHỌN MÀN HÌNH (ENTRYPOINT)
+def main():
+  apply_custom_styles()
+
+  # Kiểm tra trạng thái đăng nhập trong st.session_state
+  if "user_session" not in st.session_state or not st.session_state.get(
+      "authenticated", False
+  ):
+    render_login_page()
+  else:
+    render_main_dashboard(st.session_state.user_session)
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    login = LoginWindow(root, launch_app)
-    root.withdraw()
-    root.mainloop()
+  main()

@@ -1,218 +1,255 @@
-# ui_quan_ly_ppct.py
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import pandas as pd
 import psycopg2
+import streamlit as st
 from config import DB_URI
 
-def get_val(s, k, d=""): return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-class QuanLyPPCTWindow:
-    def __init__(self, session):
-        self.session = session
-        self.mon = get_val(session, 'to_bo_mon', 'Toán')
-        self.window = tk.Toplevel()
-        self.window.title(f"Quản lý Phân Phối Chương Trình - Môn: {self.mon}")
-        self.window.geometry("960x600")
+def inject_custom_css():
+  st.markdown(
+      """
+    <style>
+    /* CSS Nút tròn mềm mại chuẩn Mobile & Desktop */
+    div.stButton > button {
+        border-radius: 24px !important;
+        border: 1px solid #d0d7de !important;
+        padding: 8px 18px !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        transition: all 0.25s ease-in-out !important;
+        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
+        border-color: #2e86c1 !important;
+        color: #2e86c1 !important;
+    }
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #2e86c1, #2980b9) !important;
+        color: white !important;
+        border: none !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #21618c, #2e86c1) !important;
+        color: white !important;
+    }
+    .stTextInput input, .stSelectbox div, .stNumberInput input {
+        border-radius: 12px !important;
+    }
+    </style>
+    """,
+      unsafe_allow_html=True,
+  )
 
-        # --- KHUNG CÔNG CỤ NHẬP EXCEL & THAO TÁC NHANH ---
-        tool_frame = tk.LabelFrame(self.window, text=" Nhập dữ liệu tự động ", padx=10, pady=8, font=("Arial", 9, "bold"))
-        tool_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        tk.Button(tool_frame, text="📥 NHẬP PPCT TỪ FILE EXCEL (.XLSX)", bg="#2e86c1", fg="white", 
-                  font=("Arial", 10, "bold"), height=2, command=self.import_excel).pack(side=tk.LEFT, padx=5)
+def get_val(s, k, d=""):
+  return s.get(k, d) if isinstance(s, dict) else getattr(s, k, d)
 
-        tk.Label(tool_frame, text="*(File Excel gồm 5 cột: Phân môn | Khối | Tuần | Tiết PPCT | Tên bài dạy)*", 
-                 fg="#555", font=("Arial", 9, "italic")).pack(side=tk.LEFT, padx=10)
 
-        # --- KHUNG NHẬP TAY THỦ CÔNG (KHI CẦN BỔ SUNG LẺ) ---
-        form = tk.LabelFrame(self.window, text=" Thêm/Chỉnh sửa lẻ từng bài ", padx=10, pady=5)
-        form.pack(fill=tk.X, padx=10, pady=3)
+def render_quan_ly_ppct(session):
+  inject_custom_css()
+  mon = get_val(session, "to_bo_mon", "Toán")
 
-        tk.Label(form, text="Phân môn:").grid(row=0, column=0, sticky="w")
-        self.txt_phan_mon = tk.Entry(form, width=15)
-        self.txt_phan_mon.grid(row=0, column=1, padx=5, sticky="w")
+  st.markdown(
+      f"<h4 style='text-align: center; color: #2e86c1;'>Quản lý Phân Phối"
+      f" Chương Trình - Môn: {mon}</h4>",
+      unsafe_allow_html=True,
+  )
 
-        tk.Label(form, text="Khối:").grid(row=0, column=2, sticky="w", padx=(10,0))
-        self.spn_khoi = ttk.Spinbox(form, from_=6, to=12, width=6)
-        self.spn_khoi.set(10)
-        self.spn_khoi.grid(row=0, column=3, padx=5, sticky="w")
+  # ================= KHUNG CÔNG CỤ NHẬP EXCEL =================
+  with st.expander("📥 Nhập dữ liệu tự động từ file Excel", expanded=False):
+    st.info(
+        "📌 *Cấu trúc file Excel gồm 5 cột: Phân môn | Khối | Tuần | Tiết PPCT"
+        " | Tên bài dạy*"
+    )
+    uploaded_file = st.file_uploader(
+        "Chọn file Excel (.xlsx, .xls)", type=["xlsx", "xls"]
+    )
 
-        tk.Label(form, text="Tuần:").grid(row=0, column=4, sticky="w", padx=(10,0))
-        self.spn_tuan = ttk.Spinbox(form, from_=1, to=35, width=6)
-        self.spn_tuan.set(1)
-        self.spn_tuan.grid(row=0, column=5, padx=5, sticky="w")
+    if uploaded_file is not None:
+      if st.button("🚀 Nạp PPCT từ file Excel này", type="primary"):
+        try:
+          import openpyxl
 
-        tk.Label(form, text="Tiết PPCT:").grid(row=0, column=6, sticky="w", padx=(10,0))
-        self.spn_tiet = ttk.Spinbox(form, from_=1, to=150, width=6)
-        self.spn_tiet.set(1)
-        self.spn_tiet.grid(row=0, column=7, padx=5, sticky="w")
+          wb = openpyxl.load_workbook(uploaded_file)
+          sheet = wb.active
 
-        tk.Label(form, text="Tên bài dạy:").grid(row=1, column=0, sticky="w", pady=4)
-        self.txt_ten_bai = tk.Entry(form, width=65)
-        self.txt_ten_bai.grid(row=1, column=1, columnspan=6, padx=5, pady=4, sticky="w")
+          records = []
+          for row in sheet.iter_rows(min_row=2, values_only=True):
+            if not any(row):
+              continue  # Bỏ qua dòng trống
 
-        tk.Button(form, text="➕ Thêm lẻ bài này", bg="#d4efdf", font=("Arial", 9, "bold"),
-                  command=self.them_bai).grid(row=1, column=7, padx=5, pady=4)
+            phan_mon = str(row[0]).strip() if row[0] is not None else ""
+            khoi = int(row[1]) if row[1] is not None else 10
+            tuan = int(row[2]) if row[2] is not None else 1
+            tiet = int(row[3]) if row[3] is not None else 1
+            ten_bai = str(row[4]).strip() if row[4] is not None else ""
 
-        # --- BẢNG HIỂN THỊ DANH SÁCH PPCT ---
-        frame_table = tk.Frame(self.window)
-        frame_table.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+            if ten_bai:
+              records.append((mon, phan_mon, khoi, tuan, tiet, ten_bai))
 
-        cols = ("id", "mon", "phan_mon", "khoi", "tuan", "tiet_ppct", "ten_bai_day")
-        self.tree = ttk.Treeview(frame_table, columns=cols, show="headings", height=13)
-        self.tree.heading("id", text="ID")
-        self.tree.heading("mon", text="Môn")
-        self.tree.heading("phan_mon", text="Phân môn")
-        self.tree.heading("khoi", text="Khối")
-        self.tree.heading("tuan", text="Tuần")
-        self.tree.heading("tiet_ppct", text="Tiết PPCT")
-        self.tree.heading("ten_bai_day", text="Tên bài dạy")
+          if not records:
+            st.warning("Không tìm thấy dữ liệu hợp lệ trong file Excel!")
+          else:
+            conn = psycopg2.connect(DB_URI)
+            cur = conn.cursor()
+            cur.executemany(
+                """
+                            INSERT INTO phan_phoi_chuong_trinh (mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                records,
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
 
-        self.tree.column("id", width=40, anchor="center")
-        self.tree.column("mon", width=80, anchor="center")
-        self.tree.column("phan_mon", width=100, anchor="center")
-        self.tree.column("khoi", width=60, anchor="center")
-        self.tree.column("tuan", width=60, anchor="center")
-        self.tree.column("tiet_ppct", width=80, anchor="center")
-        self.tree.column("ten_bai_day", width=420, anchor="w")
+            st.success(
+                f"Đã nhập thành công {len(records)} tiết bài dạy từ Excel!"
+            )
+            st.rerun()
 
-        sb = ttk.Scrollbar(frame_table, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=sb.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        sb.pack(side=tk.RIGHT, fill=tk.Y)
+        except Exception as e:
+          st.error(f"Lỗi đọc file Excel: {e}")
 
-        # Thanh nút thao tác dưới
-        btn_box = tk.Frame(self.window)
-        btn_box.pack(pady=6)
-        tk.Button(btn_box, text="🔄 Tải lại bảng", width=15, command=self.load_data).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_box, text="❌ Xóa bài chọn", width=15, bg="#fadbd8", command=self.xoa_bai).pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_box, text="⚠️ Xóa TOÀN BỘ PPCT môn này", width=25, bg="#e74c3c", fg="white", 
-                  command=self.xoa_toan_bo).pack(side=tk.LEFT, padx=15)
+  st.divider()
 
-        self.load_data()
-
-    def import_excel(self):
-        """Hàm chọn và đọc file Excel đẩy vào CSDL"""
-        file_path = filedialog.askopenfilename(
-            title="Chọn file Excel Phân Phối Chương Trình",
-            filetypes=[("Excel Files", "*.xlsx *.xls")]
+  # ================= KHUNG NHẬP TAY THỦ CÔNG =================
+  with st.expander("➕ Thêm / Chỉnh sửa lẻ từng bài", expanded=False):
+    with st.form("form_them_ppct_le"):
+      c1, c2, c3, c4 = st.columns(4)
+      with c1:
+        txt_phan_mon = st.text_input("Phân môn:", value="Đại số")
+      with c2:
+        spn_khoi = st.number_input(
+            "Khối:", min_value=6, max_value=12, value=10
         )
-        if not file_path:
-            return
+      with c3:
+        spn_tuan = st.number_input("Tuần:", min_value=1, max_value=35, value=1)
+      with c4:
+        spn_tiet = st.number_input(
+            "Tiết PPCT:", min_value=1, max_value=150, value=1
+        )
 
-        try:
-            # Dùng thư viện openpyxl để đọc Excel
-            import openpyxl
-            wb = openpyxl.load_workbook(file_path)
-            sheet = wb.active
+      txt_ten_bai = st.text_input("Tên bài dạy:", value="")
 
-            records = []
-            # Đọc từ dòng 2 (bỏ qua tiêu đề dòng 1)
-            for row in sheet.iter_rows(min_row=2, values_only=True):
-                if not any(row): continue # Bỏ dòng trống
-                
-                # 5 cột: Phân môn, Khối, Tuần, Tiết PPCT, Tên bài
-                phan_mon = str(row[0]).strip() if row[0] is not None else ""
-                khoi = int(row[1]) if row[1] is not None else 10
-                tuan = int(row[2]) if row[2] is not None else 1
-                tiet = int(row[3]) if row[3] is not None else 1
-                ten_bai = str(row[4]).strip() if row[4] is not None else ""
+      submitted_add = st.form_submit_button(
+          "Thêm lẻ bài này", type="primary", use_container_width=True
+      )
 
-                if ten_bai:
-                    records.append((self.mon, phan_mon, khoi, tuan, tiet, ten_bai))
+      if submitted_add:
+        phan_mon_val = txt_phan_mon.strip()
+        ten_bai_val = txt_ten_bai.strip()
 
-            if not records:
-                messagebox.showwarning("Cảnh báo", "Không tìm thấy dữ liệu hợp lệ trong file Excel!")
-                return
-
-            # Lưu hàng loạt vào CSDL
+        if not phan_mon_val or not ten_bai_val:
+          st.warning("Vui lòng nhập Phân môn và Tên bài dạy!")
+        else:
+          try:
             conn = psycopg2.connect(DB_URI)
             cur = conn.cursor()
-            cur.executemany("""
-                INSERT INTO phan_phoi_chuong_trinh (mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, records)
+            cur.execute(
+                """
+                            INSERT INTO phan_phoi_chuong_trinh (mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """,
+                (
+                    mon,
+                    phan_mon_val,
+                    int(spn_khoi),
+                    int(spn_tuan),
+                    int(spn_tiet),
+                    ten_bai_val,
+                ),
+            )
             conn.commit()
             cur.close()
             conn.close()
 
-            messagebox.showinfo("Thành công", f"Đã nhập thành công {len(records)} tiết bài dạy từ Excel!")
-            self.load_data()
+            st.success(f"Đã thêm thành công bài: '{ten_bai_val}'!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Không thể thêm PPCT: {e}")
 
-        except Exception as e:
-            messagebox.showerror("Lỗi Import Excel", f"Không thể đọc file Excel: {e}\n(Hãy đảm bảo máy đã cài thư viện openpyxl: pip install openpyxl)")
+  st.divider()
 
-    def them_bai(self):
-        phan_mon = self.txt_phan_mon.get().strip()
-        khoi = self.spn_khoi.get()
-        tuan = self.spn_tuan.get()
-        tiet = self.spn_tiet.get()
-        ten_bai = self.txt_ten_bai.get().strip()
+  # ================= BẢNG HIỂN THỊ DANH SÁCH PPCT =================
+  st.markdown("##### 📋 Danh sách Phân Phối Chương Trình")
+  try:
+    conn = psycopg2.connect(DB_URI)
+    cur = conn.cursor()
+    cur.execute(
+        """
+            SELECT id, mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day
+            FROM phan_phoi_chuong_trinh
+            WHERE mon = %s
+            ORDER BY khoi, phan_mon, tiet_ppct ASC
+        """,
+        (mon,),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
 
-        if not phan_mon or not ten_bai:
-            messagebox.showwarning("Thiếu dữ liệu", "Vui lòng nhập Phân môn và Tên bài dạy!")
-            return
+    if rows:
+      df_ppct = pd.DataFrame(
+          rows,
+          columns=[
+              "ID",
+              "Môn",
+              "Phân môn",
+              "Khối",
+              "Tuần",
+              "Tiết PPCT",
+              "Tên bài dạy",
+          ],
+      )
+      st.dataframe(df_ppct, use_container_width=True, hide_index=True)
 
-        try:
+      c_act1, c_act2 = st.columns([2, 1])
+      with c_act1:
+        rec_id_xoa = st.number_input(
+            "Nhập ID bài dạy cần xóa:", min_value=1, step=1, key="input_xoa_ppct"
+        )
+      with c_act2:
+        st.write("")
+        st.write("")
+        if st.button("❌ Xóa bài này", type="primary", use_container_width=True):
+          try:
             conn = psycopg2.connect(DB_URI)
             cur = conn.cursor()
-            cur.execute("""
-                INSERT INTO phan_phoi_chuong_trinh (mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (self.mon, phan_mon, khoi, tuan, tiet, ten_bai))
+            cur.execute(
+                "DELETE FROM phan_phoi_chuong_trinh WHERE id = %s",
+                (int(rec_id_xoa),),
+            )
             conn.commit()
             cur.close()
             conn.close()
-            self.txt_ten_bai.delete(0, tk.END)
-            self.spn_tiet.set(int(tiet) + 1)
-            self.load_data()
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Không thể thêm PPCT: {e}")
+            st.success("Đã xóa tiết bài dạy thành công!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Không thể xóa: {e}")
 
-    def load_data(self):
-        for r in self.tree.get_children(): self.tree.delete(r)
+      st.write("")
+      if st.button(
+          f"⚠️ Xóa TOÀN BỘ PPCT môn {mon}", use_container_width=True
+      ):
         try:
-            conn = psycopg2.connect(DB_URI)
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT id, mon, phan_mon, khoi, tuan, tiet_ppct, ten_bai_day
-                FROM phan_phoi_chuong_trinh
-                WHERE mon = %s
-                ORDER BY khoi, phan_mon, tiet_ppct ASC
-            """, (self.mon,))
-            for r in cur.fetchall():
-                self.tree.insert("", tk.END, values=r)
-            cur.close()
-            conn.close()
+          conn = psycopg2.connect(DB_URI)
+          cur = conn.cursor()
+          cur.execute(
+              "DELETE FROM phan_phoi_chuong_trinh WHERE mon = %s", (mon,)
+          )
+          conn.commit()
+          cur.close()
+          conn.close()
+          st.success("Đã xóa sạch PPCT môn này để bạn nhập lại từ đầu!")
+          st.rerun()
         except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi tải PPCT: {e}")
+          st.error(f"Không thể xóa toàn bộ: {e}")
 
-    def xoa_bai(self):
-        sel = self.tree.selection()
-        if not sel: return
-        rec_id = self.tree.item(sel[0], 'values')[0]
-        if messagebox.askyesno("Xác nhận", "Xóa tiết bài dạy này khỏi PPCT?"):
-            try:
-                conn = psycopg2.connect(DB_URI)
-                cur = conn.cursor()
-                cur.execute("DELETE FROM phan_phoi_chuong_trinh WHERE id = %s", (rec_id,))
-                conn.commit()
-                cur.close()
-                conn.close()
-                self.load_data()
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể xóa: {e}")
+    else:
+      st.info(f"Chưa có dữ liệu PPCT nào cho môn {mon}.")
 
-    def xoa_toan_bo(self):
-        if messagebox.askyesno("CẢNH BÁO", f"Bạn có chắc muốn xóa TOÀN BỘ dữ liệu PPCT của môn {self.mon}?"):
-            try:
-                conn = psycopg2.connect(DB_URI)
-                cur = conn.cursor()
-                cur.execute("DELETE FROM phan_phoi_chuong_trinh WHERE mon = %s", (self.mon,))
-                conn.commit()
-                cur.close()
-                conn.close()
-                self.load_data()
-                messagebox.showinfo("Đã xóa", "Đã xóa sạch PPCT môn này để bạn nhập lại từ đầu!")
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Không thể xóa: {e}")
+  except Exception as e:
+    st.error(f"Lỗi tải danh sách PPCT: {e}")
