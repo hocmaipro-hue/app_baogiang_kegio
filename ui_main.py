@@ -1,12 +1,31 @@
 import streamlit as st
-from ui_bien_dong_lich_day import render_bien_dong_lich_day
-from ui_day_bu import render_day_bu
-from ui_day_thay_hsg import render_day_thay_hsg
-from ui_doi_mat_khau import render_doi_mat_khau
-from ui_ke_khai_bieu_1c import render_ke_khai_bieu_1c
 
-# Import các giao diện đã được chuyển đổi sang Streamlit
-# (Giả định các file module giao diện đã có hàm render tương ứng)
+# 1. IMPORT CÁC MODULE CHỨC NĂNG VỚI KHỐI AN TOÀN TRY-EXCEPT
+try:
+  from ui_bien_dong_lich_day import render_bien_dong_lich_day
+except ImportError:
+  render_bien_dong_lich_day = None
+
+try:
+  from ui_day_bu import render_day_bu
+except ImportError:
+  render_day_bu = None
+
+try:
+  from ui_day_thay_hsg import render_day_thay_hsg
+except ImportError:
+  render_day_thay_hsg = None
+
+try:
+  from ui_doi_mat_khau import render_doi_mat_khau
+except ImportError:
+  render_doi_mat_khau = None
+
+try:
+  from ui_ke_khai_bieu_1c import render_ke_khai_bieu_1c
+except ImportError:
+  render_ke_khai_bieu_1c = None
+
 try:
   from ui_xem_tkb import render_xem_tkb
 except ImportError:
@@ -23,6 +42,7 @@ except ImportError:
   render_pkg = None
 
 
+# 2. CSS TÙY CHỈNH CHO GIAO DIỆN BẢNG ĐIỀU HÀNH GIÁO VIÊN
 def inject_custom_css():
   st.markdown(
       """
@@ -63,10 +83,11 @@ def inject_custom_css():
   )
 
 
+# 3. HÀM HIỂN THỊ CHÍNH DÀNH CHO GIÁO VIÊN
 def render_main_teacher(session):
   inject_custom_css()
   tengv = session.get("tengv", "Giáo viên")
-  to_bm = session.get("to_bo_mon", "Toán")
+  to_bm = session.get("to_bo_mon", "Chưa phân tổ")
 
   # Sidebar menu điều hướng
   with st.sidebar:
@@ -110,13 +131,22 @@ def render_main_teacher(session):
       )
 
   elif menu_chon == "⛔ Báo Nghỉ dạy":
-    render_bien_dong_lich_day(session)
+    if render_bien_dong_lich_day:
+      render_bien_dong_lich_day(session)
+    else:
+      st.info("Module `ui_bien_dong_lich_day.py` chưa sẵn sàng.")
 
   elif menu_chon == "🟢 Đăng ký Dạy Bù":
-    render_day_bu(session)
+    if render_day_bu:
+      render_day_bu(session)
+    else:
+      st.info("Module `ui_day_bu.py` chưa sẵn sàng.")
 
   elif menu_chon == "🟡 Đăng ký Dạy Thay & HSG":
-    render_day_thay_hsg(session)
+    if render_day_thay_hsg:
+      render_day_thay_hsg(session)
+    else:
+      st.info("Module `ui_day_thay_hsg.py` chưa sẵn sàng.")
 
   elif menu_chon == "📖 Sổ Báo Giảng cá nhân":
     if render_so_bao_giang_ca_nhan:
@@ -128,8 +158,21 @@ def render_main_teacher(session):
       )
 
   elif menu_chon == "📊 Xem Kê khai giờ (PKG)":
-    # Có thể linh hoạt gọi biểu 1C hoặc PKG cá nhân tùy chọn
-    render_ke_khai_bieu_1c(session)
+    if render_ke_khai_bieu_1c:
+      render_ke_khai_bieu_1c(session)
+    elif render_pkg:
+      render_pkg(session)
+    else:
+      st.info("Module kê khai giờ chưa sẵn sàng.")
 
   elif menu_chon == "🔑 Đổi mật khẩu":
-    render_doi_mat_khau(session)
+    if render_doi_mat_khau:
+      render_doi_mat_khau(session)
+    else:
+      st.info("Module `ui_doi_mat_khau.py` chưa sẵn sàng.")
+
+
+# 4. HÀM ALIAS KHỚP CHUẨN VỚI LỆNH IMPORT TRONG WEB_APP.PY / MAIN.PY
+def render_user_dashboard(session):
+  """Hàm điều phối chính tương thích với web_app.py / main.py"""
+  render_main_teacher(session)
