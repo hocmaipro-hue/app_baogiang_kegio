@@ -416,17 +416,22 @@ else:
                             )
                         )
                     )
+                    
+                    ngay_str = (
+                        r["ngay"].strftime("%d/%m")
+                        if hasattr(r["ngay"], "strftime")
+                        else str(r["ngay"])
+                    )
+                    thu_str = f"Thứ {r['thu_num']}"
+
                     st.markdown(
                         f"""
-                    **{c_tag} {r['thu_ngay']} ({r['buoi']} - Tiết {r['tiet']})**: Lớp **{r['lop']}**  
+                    **{c_tag} {thu_str} ({ngay_str}) - Tiết {r['tiet']}**: Lớp **{r['lop']}**  
                     • **Môn/PM:** {r['mon_pm']} | **Tiết PPCT:** {r['tiet_ppct']} | **Bài dạy:** {r['ten_bai']}  
                     • **Tiến độ:** *{r['tre_vuot']}* {f"| Ghi chú: {r['chu_y']}" if r['chu_y'] else ""}
                     """
                     )
                     st.divider()
-        except Exception as e:
-            st.error(f"Lỗi nạp báo giảng: {e}")
-
     # -------------------------------------------------------------------------
     # TAB 4: BÁO NGHỈ DẠY
     # -------------------------------------------------------------------------
