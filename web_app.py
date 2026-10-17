@@ -254,37 +254,138 @@ else:
                     st.error(f"Lỗi xuất Excel: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB 2: THỜI KHÓA BIỂU CÁ NHÂN
+    # TAB 2: THỜI KHÓA BIỂU CÁ NHÂN (CÓ LỌC ĐỢT ÁP DỤNG & GÁN PHÂN MÔN)
     # -------------------------------------------------------------------------
     with tabs[1]:
-        st.subheader(f"📅 Thời Khóa Biểu - GV: {user['tengv']}")
+        st.subheader(f"📅 Thời Khóa Biểu & Gán Phân Môn - GV: {user['tengv']}")
+
+        # 1. Lấy danh sách các đợt TKB có trong CSDL
+        ds_dot_tkb = []
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT DISTINCT ap_dung_tu_tuan, ap_dung_tu_ngay 
+                FROM thoi_khoa_bieu 
+                WHERE magv = %s AND ap_dung_tu_tuan IS NOT NULL 
+                ORDER BY ap_dung_tu_tuan ASC
+            """, (user["magv"],))
+            ds_dot_raw = cur.fetchall()
+            cur.close()
+            conn.close()
+
+            if ds_dot_raw:
+                for r_dot in ds_dot_raw:
+                    t_num = r_dot[0]
+                    d_str = r_dot[1].strftime("%d/%m/%Y") if r_dot[1] else ""
+                    lbl = f"Tuần {t_num}" + (f" (từ {d_str})" if d_str else "")
+                    ds_dot_tkb.append((t_num, lbl))
+            else:
+                ds_dot_tkb = [(1, "Tuần 1 (Mặc định)")]
+        except Exception:
+            ds_dot_tkb = [(1, "Tuần 1")]
+
+        dict_dot = {lbl: val for val, lbl in ds_dot_tkb}
+        dot_chon_lbl = st.selectbox(
+            "📅 Chọn Đợt Áp Dụng TKB:",
+            list(dict_dot.keys()),
+            index=len(dict_dot) - 1,
+        )
+        tuan_hieu_luc = dict_dot[dot_chon_lbl]
+
+        # 2. Tải chính xác TKB của đợt đó
         try:
             conn = get_db()
             cur = conn.cursor()
             cur.execute(
                 """
-                SELECT thu, buoi, tiet, lop, mon, COALESCE(phan_mon, '') 
+                SELECT id, thu, buoi, tiet, lop, mon, COALESCE(phan_mon, '') 
                 FROM thoi_khoa_bieu 
-                WHERE magv = %s 
+                WHERE magv = %s AND ap_dung_tu_tuan = %s
                 ORDER BY thu, buoi DESC, tiet ASC
             """,
-                (user["magv"],),
+                (user["magv"], tuan_hieu_luc),
             )
             rows_tkb = cur.fetchall()
             cur.close()
             conn.close()
 
             if rows_tkb:
-                df_tkb = pd.DataFrame(
-                    rows_tkb,
-                    columns=["Thứ", "Buổi", "Tiết", "Lớp", "Môn", "Phân Môn"],
-                )
+                display_data = []
+                map_tiet_gan = {}
+                for r in rows_tkb:
+                    t_id, t_thu, t_buoi, t_tiet, t_lop, t_mon, t_pm = r
+                    pm_hien_thi = (
+                        t_pm
+                        if t_pm
+                        else (
+                            ""
+                            if t_mon in ["SHDC", "SHL"]
+                            else "⚠️ (Chưa gán phân môn)"
+                        )
+                    )
+                    display_data.append({
+                        "ID": t_id,
+                        "Thứ": t_thu,
+                        "Buổi": t_buoi,
+                        "Tiết": t_tiet,
+                        "Lớp": t_lop,
+                        "Môn Học": t_mon,
+                        "Phân Môn Hiện Tại": pm_hien_thi,
+                    })
+                    if t_mon not in ["SHDC", "SHL"]:
+                        map_tiet_gan[
+                            f"ID {t_id}: Thứ {t_thu} ({t_buoi} - T{t_tiet}) Lớp"
+                            f" {t_lop} [{t_mon}]"
+                        ] = t_id
+
+                df_tkb = pd.DataFrame(display_data)
                 st.dataframe(df_tkb, use_container_width=True)
+
+                # 3. KHUNG GÁN PHÂN MÔN TRỰC TIẾP TRÊN WEB
+                st.markdown("#### ⚙️ Gán Phân Môn Cho Tiết Dạy")
+                c_tiet, c_pm, c_btn = st.columns([3, 2, 2])
+                with c_tiet:
+                    tiet_chon_str = st.selectbox(
+                        "Chọn tiết cần gán:", list(map_tiet_gan.keys())
+                    )
+                with c_pm:
+                    pm_moi = st.selectbox(
+                        "Chọn Phân môn:",
+                        [
+                            "Đại số",
+                            "Giải tích",
+                            "Hình học",
+                            "Chuyên đề",
+                            user["to_bm"],
+                        ],
+                    )
+                with c_btn:
+                    st.write("")
+                    st.write("")
+                    if st.button("💾 LƯU PHÂN MÔN", type="primary"):
+                        id_tkb_chon = map_tiet_gan[tiet_chon_str]
+                        try:
+                            conn = get_db()
+                            cur = conn.cursor()
+                            cur.execute(
+                                "UPDATE thoi_khoa_bieu SET phan_mon = %s WHERE"
+                                " id = %s",
+                                (pm_moi, id_tkb_chon),
+                            )
+                            conn.commit()
+                            cur.close()
+                            conn.close()
+                            st.success(
+                                f"Đã gán phân môn [{pm_moi}] thành công!"
+                            )
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"Lỗi: {ex}")
             else:
-                st.info("Chưa có dữ liệu Thời khóa biểu.")
+                st.info(f"Đợt {dot_chon_lbl} không có lịch dạy nào.")
         except Exception as e:
             st.error(f"Lỗi tải TKB: {e}")
-
     # -------------------------------------------------------------------------
     # TAB 3: SỔ BÁO GIẢNG CÁ NHÂN
     # -------------------------------------------------------------------------
