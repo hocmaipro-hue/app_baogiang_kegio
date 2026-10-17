@@ -527,31 +527,77 @@ else:
                     st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB 5: ĐĂNG KÝ DẠY BÙ
+    # TAB 5: ĐĂNG KÝ DẠY BÙ (THÔNG MINH: TỰ QUÉT VÀ CHỌN TIẾT ĐÃ NGHỈ)
     # -------------------------------------------------------------------------
-    with tabs[4]:
-        st.subheader("🟢 Đăng Ký Lịch Dạy Bù")
-        ngay_bu = st.date_input("Ngày dạy bù:", date.today(), key="ngay_bu_all")
-        c_bb, c_bt = st.columns(2)
-        with c_bb:
-            b_bu = st.selectbox("Buổi:", ["Sáng", "Chiều"], key="b_bu_all")
-        with c_bt:
-            t_bu = st.selectbox("Tiết:", [1, 2, 3, 4, 5], key="t_bu_all")
+    with tabs[3]:
+        st.subheader("🟢 Đăng Ký Dạy Bù Cho Tiết Đã Nghỉ")
 
-        lop_bu = st.text_input("Lớp dạy bù:", placeholder="VD: 11A1")
-        pm_bu = st.text_input(
-            "Phân môn dạy bù:",
-            value="Đại số",
-            placeholder="VD: Đại số, Hình học...",
-        )
-        lydo_bu = st.text_input(
-            "Lý do dạy bù:", placeholder="VD: Bù cho tiết nghỉ ngày..."
-        )
+        # 1. TỰ ĐỘNG QUÉT CÁC TIẾT ĐÃ BÁO NGHỈ TRƯỚC ĐÂY
+        ds_tiet_nghi_chua_bu = []
+        map_tiet_nghi = {}
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT id, ngay, buoi, tiet_tkb, lop, phan_mon, ly_do 
+                FROM bien_dong_lich_day 
+                WHERE magv = %s AND loai LIKE 'Nghỉ%%' AND trang_thai != 'DA_HUY'
+                ORDER BY ngay DESC
+            """,
+                (user["magv"],),
+            )
+            raw_nghi = cur.fetchall()
+            cur.close()
+            conn.close()
 
-        if st.button("GỬI ĐĂNG KÝ DẠY BÙ", type="primary"):
-            if not lop_bu.strip():
-                st.error("Vui lòng nhập tên lớp!")
-            else:
+            if raw_nghi:
+                for r in raw_nghi:
+                    d_f = r[1].strftime("%d/%m/%Y")
+                    label = (
+                        f"Nghỉ ngày {d_f} (T{r[3]} {r[2]} - Lớp {r[4]} [{r[5]}])"
+                        f" | Lý do: {r[6]}"
+                    )
+                    ds_tiet_nghi_chua_bu.append(label)
+                    map_tiet_nghi[label] = {
+                        "lop": r[4],
+                        "phan_mon": r[5],
+                        "ngay_nghi": d_f,
+                        "ly_do_cu": r[6],
+                    }
+        except Exception:
+            pass
+
+        if ds_tiet_nghi_chua_bu:
+            tiet_nghi_duoc_chon = st.selectbox(
+                "👉 Chọn tiết nghỉ cần dạy bù:", ds_tiet_nghi_chua_bu
+            )
+            info_nghi = map_tiet_nghi[tiet_nghi_duoc_chon]
+            st.info(
+                f"✔ Sẽ dạy bù cho: Lớp **{info_nghi['lop']}** - Phân môn:"
+                f" **{info_nghi['phan_mon']}**"
+            )
+
+            ngay_bu = st.date_input(
+                "Chọn Ngày dạy bù thực tế:", date.today(), key="ngay_bu_smart"
+            )
+            col_bb, col_bt = st.columns(2)
+            with col_bb:
+                b_bu = st.selectbox(
+                    "Buổi dạy bù:", ["Sáng", "Chiều"], key="b_bu_smart"
+                )
+            with col_bt:
+                t_bu = st.selectbox(
+                    "Tiết dạy bù:", [1, 2, 3, 4, 5], key="t_bu_smart"
+                )
+
+            lydo_bu = (
+                f"Dạy bù cho tiết nghỉ ngày {info_nghi['ngay_nghi']}"
+                f" ({info_nghi['ly_do_cu']})"
+            )
+            st.text_input("Ghi chú dạy bù:", value=lydo_bu, disabled=True)
+
+            if st.button("🟢 XÁC NHẬN GỬI ĐĂNG KÝ DẠY BÙ", type="primary"):
                 try:
                     conn = get_db()
                     cur = conn.cursor()
@@ -566,19 +612,26 @@ else:
                             ngay_bu,
                             b_bu,
                             t_bu,
-                            lop_bu.strip(),
-                            pm_bu.strip(),
-                            lydo_bu or "Dạy bù",
+                            info_nghi["lop"],
+                            info_nghi["phan_mon"],
+                            lydo_bu,
                         ),
                     )
                     conn.commit()
                     cur.close()
                     conn.close()
-                    st.success(f"Đã đăng ký dạy bù lớp {lop_bu} thành công!")
+                    st.success(
+                        f"Đã đăng ký dạy bù thành công cho lớp"
+                        f" {info_nghi['lop']} vào ngày"
+                        f" {ngay_bu.strftime('%d/%m/%Y')}!"
+                    )
                 except Exception as ex:
                     st.error(f"Lỗi: {ex}")
-
-    # -------------------------------------------------------------------------
+        else:
+            st.success(
+                "🎉 Thầy/Cô hiện tại không có tiết nghỉ nào cần phải dạy bù!"
+            )
+    # -------------------------------------------------------------------------    
     # TAB 6: DẠY THAY & BDHSG
     # -------------------------------------------------------------------------
     with tabs[5]:
