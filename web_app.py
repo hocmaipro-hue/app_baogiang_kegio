@@ -1,11 +1,13 @@
-# web_app.py - HỆ THỐNG QUẢN LÝ BÁO GIẢNG & ĐIỀU HÀNH TOÀN DIỆN (ĐẦY ĐỦ 100% CHỨC NĂNG)
-from datetime import date, datetime, timedelta
+# web_app.py - HỆ THỐNG QUẢN LÝ BÁO GIẢNG & KÊ KHAI GIỜ DẠY TRỰC TUYẾN TOÀN DIỆN
+import os
 import re
+from datetime import date, datetime, timedelta
 from config import DB_URI
 import pandas as pd
 import psycopg2
 import service_so_bao_giang as sbg_service
 import streamlit as st
+from xuat_excel_bieu_1c import tao_phieu_ke_khai_1c
 
 st.set_page_config(
     page_title="THPT Nguyễn Việt Hồng - Quản Lý Giảng Dạy",
@@ -13,7 +15,6 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom CSS cho giao diện di động & máy tính
 st.markdown(
     """
     <style>
@@ -42,8 +43,8 @@ if not st.session_state["user"]:
         unsafe_allow_html=True,
     )
     st.markdown(
-        "<div class='sub-title'>HỆ THỐNG QUẢN LÝ BÁO GIẢNG & THEO DÕI GIỜ DẠY"
-        " TRỰC TUYẾN</div>",
+        "<div class='sub-title'>HỆ THỐNG BÁO GIẢNG & KÊ KHAI GIỜ DẠY TRỰC"
+        " TUYẾN</div>",
         unsafe_allow_html=True,
     )
 
@@ -91,7 +92,7 @@ if not st.session_state["user"]:
 
 else:
     # =========================================================================
-    # 2. GIAO DIỆN CHÍNH (ĐẦY ĐỦ TẤT CẢ CHỨC NĂNG)
+    # 2. GIAO DIỆN CHÍNH (ĐẦY ĐỦ PHÂN QUYỀN VÀ CÓ KÊ GIỜ)
     # =========================================================================
     user = st.session_state["user"]
     role = str(user["role"]).upper()
@@ -116,8 +117,9 @@ else:
 
     st.divider()
 
-    # TẠO TẬP HỢP TẤT CẢ CÁC TABS NGHIỆP VỤ
+    # DANH SÁCH TABS ĐẦY ĐỦ
     tab_titles = [
+        "📊 Kê Khai Giờ (Phiếu 1C)",
         "📅 TKB Cá Nhân",
         "📖 Sổ Báo Giảng",
         "⛔ Báo Nghỉ",
@@ -140,9 +142,121 @@ else:
     tabs = st.tabs(tab_titles)
 
     # -------------------------------------------------------------------------
-    # TAB 1: THỜI KHÓA BIỂU CÁ NHÂN
+    # TAB 1: KÊ KHAI GIỜ DẠY (PHIẾU 1C) - ĐẦY ĐỦ TÍNH TOÁN & XUẤT EXCEL
     # -------------------------------------------------------------------------
     with tabs[0]:
+        st.subheader("📊 Kê Khai Định Mức Giờ Dạy (Biểu 1C HD)")
+        st.caption(
+            "Tự động tính số tuần, định mức, bù trừ biến động và xuất file"
+            " Excel chuẩn quy cách"
+        )
+
+        col_d1, col_d2, col_thang = st.columns([2, 2, 2])
+        with col_d1:
+            d_tu = st.date_input("Từ ngày:", date(2026, 9, 7), key="pkg_tu_ngay")
+        with col_d2:
+            d_den = st.date_input(
+                "Đến ngày:", date(2026, 10, 3), key="pkg_den_ngay"
+            )
+        with col_thang:
+            thang_str = st.text_input("Tháng kê khai:", value="Tháng 09")
+
+        # Cài đặt kiêm nhiệm trên web
+        with st.expander("⚙️ Xem & Cài đặt thông số Kiêm nhiệm / Giảm trừ"):
+            try:
+                conn = get_db()
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT COALESCE(dinh_muc_tiet, 17), COALESCE(kiem_nhiem, ''), COALESCE(tiet_giam_tru, 0),
+                           COALESCE(kiem_nhiem_2, ''), COALESCE(giam_tru_kn2, 0)
+                    FROM giao_vien WHERE magv = %s
+                """,
+                    (user["magv"],),
+                )
+                row_kn = cur.fetchone()
+                cur.close()
+                conn.close()
+
+                st.write(f"• **Định mức chuẩn:** {row_kn[0]} tiết/tuần")
+                st.write(
+                    f"• **Kiêm nhiệm 1:** {row_kn[1]} (Giảm {row_kn[2]}"
+                    " tiết/tuần)"
+                )
+                if row_kn[3]:
+                    st.write(
+                        f"• **Kiêm nhiệm 2:** {row_kn[3]} (Giảm {row_kn[4]}"
+                        " tiết/tuần)"
+                    )
+            except Exception:
+                pass
+
+        if st.button("📥 TÍNH TOÁN & TẢI FILE EXCEL PHIẾU 1C", type="primary"):
+            if d_tu > d_den:
+                st.error("'Từ ngày' không được lớn hơn 'Đến ngày'!")
+            else:
+                try:
+                    with st.spinner("Đang tổng hợp dữ liệu và vẽ file Excel..."):
+                        base_monday = date(2026, 9, 7)
+                        try:
+                            conn = get_db()
+                            cur = conn.cursor()
+                            cur.execute(
+                                "SELECT gia_tri FROM cau_hinh WHERE khoa ="
+                                " 'ngay_bat_dau_nam_hoc'"
+                            )
+                            r_c = cur.fetchone()
+                            cur.close()
+                            conn.close()
+                            if r_c:
+                                base_monday = datetime.strptime(
+                                    r_c[0].strip(), "%Y-%m-%d"
+                                ).date()
+                        except Exception:
+                            pass
+
+                        tu_tuan = max(1, (d_tu - base_monday).days // 7 + 1)
+                        den_tuan = max(
+                            tu_tuan, (d_den - base_monday).days // 7 + 1
+                        )
+                        so_ngay = (d_den - d_tu).days + 1
+                        so_tuan_thuc_te = max(1, round(so_ngay / 7))
+
+                        extra_info = {
+                            "tu_ngay": d_tu.strftime("%d/%m/%Y"),
+                            "den_ngay": d_den.strftime("%d/%m/%Y"),
+                            "so_tuan": so_tuan_thuc_te,
+                        }
+
+                        # Gọi thẳng hàm xuất Excel chuẩn mẫu Biểu 1C
+                        file_path = tao_phieu_ke_khai_1c(
+                            user, tu_tuan, den_tuan, thang_str, extra_info
+                        )
+
+                        with open(file_path, "rb") as f:
+                            excel_bytes = f.read()
+
+                        filename = os.path.basename(file_path)
+
+                        st.success(
+                            f"Đã tạo thành công Phiếu 1C ({so_tuan_thuc_te}"
+                            " tuần)! File đã sẵn sàng để tải về:"
+                        )
+                        st.download_button(
+                            label="📲 BẤM VÀO ĐÂY ĐỂ TẢI FILE EXCEL VỀ MÁY",
+                            data=excel_bytes,
+                            file_name=filename,
+                            mime=(
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            ),
+                        )
+                except Exception as ex:
+                    st.error(f"Lỗi xuất Excel: {ex}")
+
+    # -------------------------------------------------------------------------
+    # TAB 2: THỜI KHÓA BIỂU CÁ NHÂN
+    # -------------------------------------------------------------------------
+    with tabs[1]:
         st.subheader(f"📅 Thời Khóa Biểu - GV: {user['tengv']}")
         try:
             conn = get_db()
@@ -172,9 +286,9 @@ else:
             st.error(f"Lỗi tải TKB: {e}")
 
     # -------------------------------------------------------------------------
-    # TAB 2: SỔ BÁO GIẢNG CÁ NHÂN
+    # TAB 3: SỔ BÁO GIẢNG CÁ NHÂN
     # -------------------------------------------------------------------------
-    with tabs[1]:
+    with tabs[2]:
         st.subheader("📖 Tra Cứu Sổ Báo Giảng Tuần")
         tuan_sbg = st.number_input(
             "Chọn Tuần học:", min_value=1, max_value=35, value=1, step=1
@@ -213,9 +327,9 @@ else:
             st.error(f"Lỗi nạp báo giảng: {e}")
 
     # -------------------------------------------------------------------------
-    # TAB 3: BÁO NGHỈ DẠY
+    # TAB 4: BÁO NGHỈ DẠY
     # -------------------------------------------------------------------------
-    with tabs[2]:
+    with tabs[3]:
         st.subheader("⛔ Đăng Ký Báo Nghỉ Giảng Dạy")
         loai_nghi = st.selectbox(
             "Lý do nghỉ:",
@@ -305,9 +419,9 @@ else:
                     st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB 4: ĐĂNG KÝ DẠY BÙ
+    # TAB 5: ĐĂNG KÝ DẠY BÙ
     # -------------------------------------------------------------------------
-    with tabs[3]:
+    with tabs[4]:
         st.subheader("🟢 Đăng Ký Lịch Dạy Bù")
         ngay_bu = st.date_input("Ngày dạy bù:", date.today(), key="ngay_bu_all")
         c_bb, c_bt = st.columns(2)
@@ -357,9 +471,9 @@ else:
                     st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB 5: DẠY THAY & BDHSG
+    # TAB 6: DẠY THAY & BDHSG
     # -------------------------------------------------------------------------
-    with tabs[4]:
+    with tabs[5]:
         st.subheader("🟡 Đăng Ký Dạy Thay Hoặc Bồi Dưỡng HSG")
         loai_tt = st.radio(
             "Chọn loại hình:",
@@ -412,9 +526,9 @@ else:
                 st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB 6: LỊCH SỬ ĐƠN (CÓ NÚT XÓA)
+    # TAB 7: LỊCH SỬ ĐƠN (CÓ NÚT XÓA)
     # -------------------------------------------------------------------------
-    with tabs[5]:
+    with tabs[6]:
         st.subheader("📋 Lịch Sử Các Đơn Biến Động Đã Gửi")
         try:
             conn = get_db()
@@ -462,10 +576,10 @@ else:
             st.error(f"Lỗi: {e}")
 
     # -------------------------------------------------------------------------
-    # NẾU LÀ TỔ TRƯỞNG: THÊM TAB SOI BÁO GIẢNG TỔ VÀ ĐƠN TỔ
+    # NẾU LÀ TỔ TRƯỞNG: TAB SOI BÁO GIẢNG VÀ ĐƠN TỔ
     # -------------------------------------------------------------------------
     if is_totruong:
-        with tabs[6]:
+        with tabs[7]:
             st.subheader(f"👥 Soi Sổ Báo Giảng Của Tổ {user['to_bm']}")
             try:
                 conn = get_db()
@@ -505,7 +619,7 @@ else:
             except Exception as ex:
                 st.error(f"Lỗi: {ex}")
 
-        with tabs[7]:
+        with tabs[8]:
             st.subheader(f"📝 Đơn Báo Nghỉ / Bù Trong Tổ {user['to_bm']}")
             try:
                 conn = get_db()
@@ -544,10 +658,10 @@ else:
                 st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # NẾU LÀ ADMIN / BGH: THÊM CÁC TAB ĐIỀU HÀNH TOÀN TRƯỜNG
+    # NẾU LÀ ADMIN / BGH: TAB ĐIỀU HÀNH TOÀN TRƯỜNG
     # -------------------------------------------------------------------------
     elif is_admin:
-        with tabs[6]:
+        with tabs[7]:
             st.subheader("📊 Giám Sát Tiến Độ & Định Mức Giờ Dạy Toàn Trường")
             try:
                 conn = get_db()
@@ -574,7 +688,7 @@ else:
             except Exception as ex:
                 st.error(f"Lỗi: {ex}")
 
-        with tabs[7]:
+        with tabs[8]:
             st.subheader("📝 Quản Lý Toàn Bộ Biến Động Lịch Dạy Toàn Trường")
             try:
                 conn = get_db()
@@ -607,7 +721,7 @@ else:
             except Exception as ex:
                 st.error(f"Lỗi: {ex}")
 
-        with tabs[8]:
+        with tabs[9]:
             st.subheader("👥 Danh Sách Toàn Thể Hội Đồng Sư Phạm")
             try:
                 conn = get_db()
@@ -636,7 +750,7 @@ else:
                 st.error(f"Lỗi: {ex}")
 
     # -------------------------------------------------------------------------
-    # TAB CUỐI CÙNG: ĐỔI MẬT KHẨU CÁ NHÂN
+    # TAB CUỐI CÙNG: ĐỔI MẬT KHẨU
     # -------------------------------------------------------------------------
     with tabs[-1]:
         st.subheader("🔑 Đổi Mật Khẩu Cá Nhân")
