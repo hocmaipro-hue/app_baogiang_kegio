@@ -416,7 +416,7 @@ else:
                             )
                         )
                     )
-                    
+
                     ngay_str = (
                         r["ngay"].strftime("%d/%m")
                         if hasattr(r["ngay"], "strftime")
@@ -432,6 +432,8 @@ else:
                     """
                     )
                     st.divider()
+        except Exception as e:
+            st.error(f"Lỗi nạp báo giảng: {e}")
     # -------------------------------------------------------------------------
     # TAB 4: BÁO NGHỈ DẠY
     # -------------------------------------------------------------------------
