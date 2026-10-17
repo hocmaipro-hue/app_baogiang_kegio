@@ -1,178 +1,86 @@
 import streamlit as st
 
-# 1. IMPORT CÁC MODULE CHỨC NĂNG VỚI KHỐI AN TOÀN TRY-EXCEPT
 try:
-  from ui_bien_dong_lich_day import render_bien_dong_lich_day
+    from ui_bien_dong_lich_day import render_bien_dong_lich_day
 except ImportError:
-  render_bien_dong_lich_day = None
-
-try:
-  from ui_day_bu import render_day_bu
-except ImportError:
-  render_day_bu = None
+    render_bien_dong_lich_day = None
 
 try:
-  from ui_day_thay_hsg import render_day_thay_hsg
+    from ui_day_bu import render_day_bu
 except ImportError:
-  render_day_thay_hsg = None
+    render_day_bu = None
 
 try:
-  from ui_doi_mat_khau import render_doi_mat_khau
+    from ui_day_thay_hsg import render_day_thay_hsg
 except ImportError:
-  render_doi_mat_khau = None
+    render_day_thay_hsg = None
 
 try:
-  from ui_ke_khai_bieu_1c import render_ke_khai_bieu_1c
+    from ui_doi_mat_khau import render_doi_mat_khau
 except ImportError:
-  render_ke_khai_bieu_1c = None
+    render_doi_mat_khau = None
 
 try:
-  from ui_xem_tkb import render_xem_tkb
+    from ui_ke_khai_bieu_1c import render_ke_khai_bieu_1c
 except ImportError:
-  render_xem_tkb = None
+    render_ke_khai_bieu_1c = None
 
 try:
-  from ui_so_bao_giang_ca_nhan import render_so_bao_giang_ca_nhan
+    from ui_xem_tkb import render_xem_tkb
 except ImportError:
-  render_so_bao_giang_ca_nhan = None
+    render_xem_tkb = None
 
 try:
-  from ui_pkg import render_pkg
+    from ui_so_bao_giang_ca_nhan import render_so_bao_giang_ca_nhan
 except ImportError:
-  render_pkg = None
+    render_so_bao_giang_ca_nhan = None
 
 
-# 2. CSS TÙY CHỈNH CHO GIAO DIỆN BẢNG ĐIỀU HÀNH GIÁO VIÊN
-def inject_custom_css():
-  st.markdown(
-      """
-    <style>
-    /* CSS Chung cho giao diện Streamlit */
-    .stRadio label {
-        font-weight: 600 !important;
-        font-size: 15px !important;
-    }
-    div.stButton > button {
-        border-radius: 24px !important;
-        border: 1px solid #d0d7de !important;
-        padding: 8px 18px !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        transition: all 0.25s ease-in-out !important;
-        box-shadow: 0px 2px 6px rgba(0,0,0,0.06) !important;
-        width: 100% !important;
-    }
-    div.stButton > button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0px 4px 12px rgba(0,0,0,0.12) !important;
-        border-color: #1a5276 !important;
-        color: #1a5276 !important;
-    }
-    div.stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #27ae60, #2ecc71) !important;
-        color: white !important;
-        border: none !important;
-    }
-    div.stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #219150, #27ae60) !important;
-        color: white !important;
-    }
-    </style>
-    """,
-      unsafe_allow_html=True,
-  )
-
-
-# 3. HÀM HIỂN THỊ CHÍNH DÀNH CHO GIÁO VIÊN
-def render_main_teacher(session):
-  inject_custom_css()
-  tengv = session.get("tengv", "Giáo viên")
-  to_bm = session.get("to_bo_mon", "Chưa phân tổ")
-
-  # Sidebar menu điều hướng
-  with st.sidebar:
-    st.markdown(
-        f"<h3 style='color: #1a5276;'>Xin chào,</h3><h4>{tengv}</h4>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f"<p style='color: #555; font-style: italic;'>Tổ bộ môn: {to_bm}</p>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
-
-    menu_chon = st.radio(
-        "CHỨC NĂNG GIẢNG DẠY",
-        options=[
-            "📅 Xem TKB cá nhân",
-            "⛔ Báo Nghỉ dạy",
-            "🟢 Đăng ký Dạy Bù",
-            "🟡 Đăng ký Dạy Thay & HSG",
-            "📖 Sổ Báo Giảng cá nhân",
-            "📊 Xem Kê khai giờ (PKG)",
-            "🔑 Đổi mật khẩu",
-        ],
-    )
-
-    st.divider()
-    if st.button(
-        "🚪 Đăng xuất", type="primary", use_container_width=True
-    ):
-      st.session_state.clear()
-      st.rerun()
-
-  # Hiển thị nội dung tương ứng theo lựa chọn trên Sidebar
-  if menu_chon == "📅 Xem TKB cá nhân":
-    if render_xem_tkb:
-      render_xem_tkb(session)
-    else:
-      st.info(
-          "Module `ui_xem_tkb.py` đang được cập nhật hiển thị Streamlit."
-      )
-
-  elif menu_chon == "⛔ Báo Nghỉ dạy":
-    if render_bien_dong_lich_day:
-      render_bien_dong_lich_day(session)
-    else:
-      st.info("Module `ui_bien_dong_lich_day.py` chưa sẵn sàng.")
-
-  elif menu_chon == "🟢 Đăng ký Dạy Bù":
-    if render_day_bu:
-      render_day_bu(session)
-    else:
-      st.info("Module `ui_day_bu.py` chưa sẵn sàng.")
-
-  elif menu_chon == "🟡 Đăng ký Dạy Thay & HSG":
-    if render_day_thay_hsg:
-      render_day_thay_hsg(session)
-    else:
-      st.info("Module `ui_day_thay_hsg.py` chưa sẵn sàng.")
-
-  elif menu_chon == "📖 Sổ Báo Giảng cá nhân":
-    if render_so_bao_giang_ca_nhan:
-      render_so_bao_giang_ca_nhan(session)
-    else:
-      st.info(
-          "Module `ui_so_bao_giang_ca_nhan.py` đang được cập nhật hiển thị"
-          " Streamlit."
-      )
-
-  elif menu_chon == "📊 Xem Kê khai giờ (PKG)":
-    if render_ke_khai_bieu_1c:
-      render_ke_khai_bieu_1c(session)
-    elif render_pkg:
-      render_pkg(session)
-    else:
-      st.info("Module kê khai giờ chưa sẵn sàng.")
-
-  elif menu_chon == "🔑 Đổi mật khẩu":
-    if render_doi_mat_khau:
-      render_doi_mat_khau(session)
-    else:
-      st.info("Module `ui_doi_mat_khau.py` chưa sẵn sàng.")
-
-
-# 4. HÀM ALIAS KHỚP CHUẨN VỚI LỆNH IMPORT TRONG WEB_APP.PY / MAIN.PY
 def render_user_dashboard(session):
-  """Hàm điều phối chính tương thích với web_app.py / main.py"""
-  render_main_teacher(session)
+    tengv = session.get("tengv", "Giáo viên")
+    to_bm = session.get("to_bo_mon", "Toán")
+
+    with st.sidebar:
+        st.markdown(f"<h3 style='color: #1a5276;'>Xin chào,</h3><h4>{tengv}</h4>", unsafe_allow_html=True)
+        st.markdown(f"<p style='color: #555; font-style: italic;'>Tổ bộ môn: {to_bm}</p>", unsafe_allow_html=True)
+        st.divider()
+
+        menu_chon = st.radio(
+            "CHỨC NĂNG GIẢNG DẠY",
+            options=[
+                "📅 Xem TKB cá nhân",
+                "⛔ Báo Nghỉ dạy",
+                "🟢 Đăng ký Dạy Bù",
+                "🟡 Đăng ký Dạy Thay & HSG",
+                "📖 Sổ Báo Giảng cá nhân",
+                "📊 Xem Kê khai giờ (PKG)",
+                "🔑 Đổi mật khẩu",
+            ],
+        )
+
+        st.divider()
+        if st.button("🚪 Đăng xuất", type="primary", use_container_width=True):
+            st.session_state.clear()
+            st.rerun()
+
+    if menu_chon == "📅 Xem TKB cá nhân":
+        if render_xem_tkb:
+            render_xem_tkb(session)
+    elif menu_chon == "⛔ Báo Nghỉ dạy":
+        if render_bien_dong_lich_day:
+            render_bien_dong_lich_day(session)
+    elif menu_chon == "🟢 Đăng ký Dạy Bù":
+        if render_day_bu:
+            render_day_bu(session)
+    elif menu_chon == "🟡 Đăng ký Dạy Thay & HSG":
+        if render_day_thay_hsg:
+            render_day_thay_hsg(session)
+    elif menu_chon == "📖 Sổ Báo Giảng cá nhân":
+        if render_so_bao_giang_ca_nhan:
+            render_so_bao_giang_ca_nhan(session)
+    elif menu_chon == "📊 Xem Kê khai giờ (PKG)":
+        if render_ke_khai_bieu_1c:
+            render_ke_khai_bieu_1c(session)
+    elif menu_chon == "🔑 Đổi mật khẩu":
+        if render_doi_mat_khau:
+            render_doi_mat_khau(session)
