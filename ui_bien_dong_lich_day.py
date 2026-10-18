@@ -15,6 +15,8 @@ def trich_khoi(ten_lop):
 
 
 def chuan_hoa_ngay(text_input):
+  if not text_input:
+    return None
   s = text_input.strip()
   nam = 2026
   m1 = re.match(r"^(\d{1,2})[/-](\d{1,2})$", s)
@@ -40,7 +42,7 @@ def render_bien_dong_lich_day(session):
   tengv = get_val(session, "tengv", "Giáo viên")
   to_bm = get_val(session, "to_bo_mon", "Toán")
 
-  # Đảm bảo cấu trúc cột CSDL
+  # Đảm bảo CSDL đầy đủ cột
   try:
     conn = psycopg2.connect(DB_URI)
     cur = conn.cursor()
@@ -58,7 +60,7 @@ def render_bien_dong_lich_day(session):
   except Exception:
     pass
 
-  # Lấy danh sách lớp bản thân từ TKB
+  # Danh sách lớp dạy chính khóa của bản thân
   ds_lop_self = []
   try:
     conn = psycopg2.connect(DB_URI)
@@ -77,7 +79,7 @@ def render_bien_dong_lich_day(session):
   except Exception:
     pass
 
-  # Lấy danh sách giáo viên toàn trường
+  # Map GV toàn trường
   map_gv_toan_truong = {}
   try:
     conn = psycopg2.connect(DB_URI)
@@ -94,7 +96,7 @@ def render_bien_dong_lich_day(session):
   except Exception:
     pass
 
-  # Lấy phân môn theo PPCT
+  # Map phân môn theo khối từ PPCT
   ppct_mon_khoi_map = {10: [], 11: [], 12: []}
   try:
     conn = psycopg2.connect(DB_URI)
@@ -117,200 +119,203 @@ def render_bien_dong_lich_day(session):
   except Exception:
     pass
 
-  with st.form("form_bien_dong"):
-    st.markdown(f"**📝 Đăng ký biến động mới (Tổ: {to_bm})**")
+  # KHÔNG DÙNG st.form ĐỂ HỆ THỐNG PHẢN HỒI REAL-TIME TỰ ĐỘNG BỐC TKB KHI NHẬP NGÀY/TIẾT
+  st.markdown(f"**📝 Đăng ký biến động mới (Tổ: {to_bm})**")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-      loai = st.selectbox(
-          "Loại biến động:",
-          options=[
-              "Nghỉ theo kế hoạch",
-              "Nghỉ theo điều động",
-              "Nghỉ việc riêng",
-              "Dạy bù",
-              "Dạy thay",
-              "Bồi dưỡng HSG",
-          ],
-      )
-    with c2:
-      raw_tu_ngay = st.text_input(
-          "Từ Ngày (VD: 15/09 hoặc 15/09/2026):",
-          value=datetime.now().strftime("%d/%m/%Y"),
-      )
-    with c3:
-      raw_den_ngay = st.text_input(
-          "Đến Ngày (Nghỉ dài hạn - tùy chọn):", value=""
-      )
-
-    c4, c5, c6 = st.columns(3)
-    with c4:
-      buoi = st.selectbox("Buổi:", options=["Sáng", "Chiều"])
-    with c5:
-      tiet = st.number_input("Tiết TKB:", min_value=1, max_value=5, value=1)
-    with c6:
-      gv_thay_label = st.selectbox(
-          "GV được dạy thay:",
-          options=["(Không áp dụng)"] + list(map_gv_toan_truong.keys()),
-      )
-
-    # Auto-fill TKB chuẩn từ CSDL
-    auto_lop = ""
-    auto_pm = ""
-    co_tiets_tkb = False
-    tu_ngay_obj = chuan_hoa_ngay(raw_tu_ngay)
-
-    if tu_ngay_obj and not raw_den_ngay.strip():
-      thu_so = tu_ngay_obj.weekday() + 2
-      try:
-        conn = psycopg2.connect(DB_URI)
-        cur = conn.cursor()
-        cur.execute(
-            """
-                    SELECT lop, mon, COALESCE(phan_mon, '') 
-                    FROM thoi_khoa_bieu 
-                    WHERE magv = %s AND (thu = %s OR thu = %s) AND buoi = %s AND tiet = %s
-                """,
-            (magv, str(thu_so), thu_so, buoi, int(tiet)),
-        )
-        r_tkb = cur.fetchone()
-        cur.close()
-        conn.close()
-        if r_tkb:
-          auto_lop = r_tkb[0].strip()
-          auto_pm = r_tkb[2].strip() if r_tkb[2].strip() else r_tkb[1].strip()
-          co_tiets_tkb = True
-          st.success(
-              f"✔ Khớp TKB Thứ {thu_so} Tiết {tiet} ({buoi}): [{auto_lop}] -"
-              f" [{auto_pm}]"
-          )
-        else:
-          st.error(
-              f"⚠️ Thứ {thu_so} Tiết {tiet} ({buoi}): KHÔNG CÓ TIẾT TRÊN TKB!"
-          )
-      except Exception:
-        pass
-
-    c7, c8, c9 = st.columns(3)
-    with c7:
-      if loai.startswith("Nghỉ"):
-        # Báo nghỉ: Khóa chặt lớp theo TKB, không cho người dùng sửa
-        lop = st.text_input(
-            "Lớp dạy (Tự động từ TKB):", value=auto_lop, disabled=True
-        )
-      elif loai == "Bồi dưỡng HSG":
-        lop = st.text_input("Lớp dạy:", value="")
-      else:
-        lop = st.selectbox(
-            "Lớp dạy:", options=ds_lop_self if ds_lop_self else [""]
-        )
-
-    with c8:
-      if loai.startswith("Nghỉ"):
-        # Báo nghỉ: Khóa chặt phân môn theo TKB, không cho người dùng sửa
-        phan_mon = st.text_input(
-            "Phân môn (Tự động từ TKB):", value=auto_pm, disabled=True
-        )
-      elif loai == "Bồi dưỡng HSG":
-        phan_mon = st.text_input("Phân môn:", value="BDHSG")
-      else:
-        khoi_chon = trich_khoi(lop) if lop else 10
-        ds_pm_khoi = ppct_mon_khoi_map.get(khoi_chon, [to_bm])
-        phan_mon = st.selectbox(
-            "Phân môn:", options=ds_pm_khoi if ds_pm_khoi else [to_bm]
-        )
-
-    with c9:
-      lydo = st.text_input("Lý do / QĐ:", value="")
-
-    submitted = st.form_submit_button(
-        "➕ GỬI ĐĂNG KÝ BIẾN ĐỘNG", type="primary", use_container_width=True
+  c1, c2, c3 = st.columns(3)
+  with c1:
+    loai = st.selectbox(
+        "Loại biến động:",
+        options=[
+            "Nghỉ theo kế hoạch",
+            "Nghỉ theo điều động",
+            "Nghỉ việc riêng",
+            "Dạy bù",
+            "Dạy thay",
+            "Bồi dưỡng HSG",
+        ],
+        key="bd_loai",
+    )
+  with c2:
+    raw_tu_ngay = st.text_input(
+        "Từ Ngày (VD: 15/09 hoặc 15/09/2026):",
+        value=datetime.now().strftime("%d/%m/%Y"),
+        key="bd_tu_ngay",
+    )
+  with c3:
+    raw_den_ngay = st.text_input(
+        "Đến Ngày (Nghỉ dài hạn - tùy chọn):", value="", key="bd_den_ngay"
     )
 
-    if submitted:
-      if not tu_ngay_obj:
-        st.error("Vui lòng nhập Ngày hợp lệ!")
-        return
+  c4, c5, c6 = st.columns(3)
+  with c4:
+    buoi = st.selectbox("Buổi:", options=["Sáng", "Chiều"], key="bd_buoi")
+  with c5:
+    tiet = st.number_input(
+        "Tiết TKB:", min_value=1, max_value=5, value=1, key="bd_tiet"
+    )
+  with c6:
+    gv_thay_label = st.selectbox(
+        "GV được dạy thay:",
+        options=["(Không áp dụng)"] + list(map_gv_toan_truong.keys()),
+        key="bd_gv_thay",
+    )
 
+  # REAL-TIME TRA CỨU VÀ HIỂN THỊ THÔNG TIN TKB
+  auto_lop = ""
+  auto_pm = ""
+  co_tiets_tkb = False
+  tu_ngay_obj = chuan_hoa_ngay(raw_tu_ngay)
+
+  if tu_ngay_obj and not raw_den_ngay.strip():
+    thu_so = tu_ngay_obj.weekday() + 2
+    try:
+      conn = psycopg2.connect(DB_URI)
+      cur = conn.cursor()
+      cur.execute(
+          """
+                SELECT lop, mon, COALESCE(phan_mon, '') 
+                FROM thoi_khoa_bieu 
+                WHERE magv = %s AND (thu = %s OR thu = %s) AND buoi = %s AND tiet = %s
+            """,
+          (magv, str(thu_so), thu_so, buoi, int(tiet)),
+      )
+      r_tkb = cur.fetchone()
+      cur.close()
+      conn.close()
+      if r_tkb:
+        auto_lop = r_tkb[0].strip()
+        auto_pm = r_tkb[2].strip() if r_tkb[2].strip() else r_tkb[1].strip()
+        co_tiets_tkb = True
+        st.success(
+            f"✔ Khớp TKB Thứ {thu_so} Tiết {tiet} ({buoi}): Lớp [{auto_lop}] -"
+            f" Phân môn [{auto_pm}]"
+        )
+      else:
+        st.error(
+            f"⚠️ Thứ {thu_so} Tiết {tiet} ({buoi}): KHÔNG CÓ TIẾT TRÊN TKB!"
+        )
+    except Exception:
+      pass
+
+  c7, c8, c9 = st.columns(3)
+  with c7:
+    if loai.startswith("Nghỉ"):
+      lop = st.text_input(
+          "Lớp dạy (Tự động từ TKB):", value=auto_lop, disabled=True
+      )
+    elif loai == "Bồi dưỡng HSG":
+      lop = st.text_input("Lớp dạy:", value="", key="bd_lop_hsg")
+    else:
+      lop = st.selectbox(
+          "Lớp dạy:",
+          options=ds_lop_self if ds_lop_self else [""],
+          key="bd_lop_sec",
+      )
+
+  with c8:
+    if loai.startswith("Nghỉ"):
+      phan_mon = st.text_input(
+          "Phân môn (Tự động từ TKB):", value=auto_pm, disabled=True
+      )
+    elif loai == "Bồi dưỡng HSG":
+      phan_mon = st.text_input("Phân môn:", value="BDHSG", key="bd_pm_hsg")
+    else:
+      khoi_chon = trich_khoi(lop) if lop else 10
+      ds_pm_khoi = ppct_mon_khoi_map.get(khoi_chon, [to_bm])
+      phan_mon = st.selectbox(
+          "Phân môn:",
+          options=ds_pm_khoi if ds_pm_khoi else [to_bm],
+          key="bd_pm_sec",
+      )
+
+  with c9:
+    lydo = st.text_input("Lý do / QĐ:", value="", key="bd_lydo")
+
+  st.write("")
+  if st.button(
+      "➕ GỬI ĐĂNG KÝ BIẾN ĐỘNG", type="primary", use_container_width=True
+  ):
+    if not tu_ngay_obj:
+      st.error("Vui lòng nhập Ngày hợp lệ!")
+    else:
       try:
         conn = psycopg2.connect(DB_URI)
         cur = conn.cursor()
 
-        # 1. BÁO NGHỈ DÀI HẠN (Nghỉ Tết, nghỉ hè...)
+        # 1. BÁO NGHỈ DÀI HẠN
         if loai.startswith("Nghỉ") and raw_den_ngay.strip():
           den_ngay_obj = chuan_hoa_ngay(raw_den_ngay)
           if not den_ngay_obj or den_ngay_obj < tu_ngay_obj:
             st.error("Đến ngày không hợp lệ hoặc nhỏ hơn Từ ngày!")
             cur.close()
             conn.close()
-            return
+          else:
+            cur.execute(
+                "SELECT thu, COALESCE(buoi,'Sáng'), tiet, lop, mon,"
+                " COALESCE(phan_mon,'') FROM thoi_khoa_bieu WHERE magv = %s",
+                (magv,),
+            )
+            tkb_all = cur.fetchall()
 
-          cur.execute(
-              "SELECT thu, COALESCE(buoi,'Sáng'), tiet, lop, mon,"
-              " COALESCE(phan_mon,'') FROM thoi_khoa_bieu WHERE magv = %s",
-              (magv,),
-          )
-          tkb_all = cur.fetchall()
+            cur_d = tu_ngay_obj
+            count_added = 0
+            while cur_d <= den_ngay_obj:
+              thu_num = cur_d.weekday() + 2
+              for r in tkb_all:
+                t_thu = (
+                    int(re.search(r"\d+", str(r[0])).group())
+                    if re.search(r"\d+", str(r[0]))
+                    else 2
+                )
+                if t_thu == thu_num and r[4].strip() not in ["SHDC", "SHL"]:
+                  t_buoi = r[1]
+                  t_tiet = r[2]
+                  t_lop = r[3]
+                  t_pm = r[5].strip() if r[5].strip() else r[4].strip()
 
-          cur_d = tu_ngay_obj
-          count_added = 0
-          while cur_d <= den_ngay_obj:
-            thu_num = cur_d.weekday() + 2
-            for r in tkb_all:
-              t_thu = (
-                  int(re.search(r"\d+", str(r[0])).group())
-                  if re.search(r"\d+", str(r[0]))
-                  else 2
-              )
-              if t_thu == thu_num and r[4].strip() not in ["SHDC", "SHL"]:
-                t_buoi = r[1]
-                t_tiet = r[2]
-                t_lop = r[3]
-                t_pm = r[5].strip() if r[5].strip() else r[4].strip()
-
-                cur.execute(
-                    """
+                  cur.execute(
+                      """
                                     SELECT id FROM bien_dong_lich_day 
                                     WHERE magv = %s AND ngay = %s AND buoi = %s AND tiet_tkb = %s AND loai LIKE 'Nghỉ%%' AND trang_thai != 'DA_HUY'
                                 """,
-                    (magv, cur_d, t_buoi, t_tiet),
-                )
-                if not cur.fetchone():
-                  cur.execute(
-                      """
+                      (magv, cur_d, t_buoi, t_tiet),
+                  )
+                  if not cur.fetchone():
+                    cur.execute(
+                        """
                                         INSERT INTO bien_dong_lich_day (magv, loai, ngay, buoi, tiet_tkb, lop, phan_mon, gv_day_thay, ly_do, trang_thai)
                                         VALUES (%s, %s, %s, %s, %s, %s, %s, '', %s, 'CHO_DUYET')
                                     """,
-                      (
-                          magv,
-                          loai,
-                          cur_d,
-                          t_buoi,
-                          t_tiet,
-                          t_lop,
-                          t_pm,
-                          lydo or "Nghỉ dài hạn",
-                      ),
-                  )
-                  count_added += 1
-            cur_d += timedelta(days=1)
+                        (
+                            magv,
+                            loai,
+                            cur_d,
+                            t_buoi,
+                            t_tiet,
+                            t_lop,
+                            t_pm,
+                            lydo or "Nghỉ dài hạn",
+                        ),
+                    )
+                    count_added += 1
+              cur_d += timedelta(days=1)
 
-          conn.commit()
-          cur.close()
-          conn.close()
-          st.success(f"Đã tự động tạo {count_added} tiết nghỉ thành công!")
-          st.rerun()
+            conn.commit()
+            cur.close()
+            conn.close()
+            st.success(f"Đã tự động tạo {count_added} tiết nghỉ thành công!")
+            st.rerun()
 
         # 2. BÁO NGHỈ ĐƠN LẺ HOẶC DẠY BÙ / DẠY THAY
         else:
           thu_so = tu_ngay_obj.weekday() + 2
 
-          # Chống ghi sai dữ liệu khi Báo nghỉ đơn lẻ
           if loai.startswith("Nghỉ"):
             if not co_tiets_tkb:
               st.error(
                   f"⛔ KHÔNG THỂ BÁO NGHỈ! Vào Thứ {thu_so} Tiết {tiet}"
-                  f" ({buoi}) thầy/cô KHÔNG CÓ TIẾT TRÊN TKB!"
+                  f" ({buoi}) bạn KHÔNG CÓ TIẾT TRÊN TKB!"
               )
               cur.close()
               conn.close()
@@ -411,9 +416,13 @@ def render_bien_dong_lich_day(session):
       except Exception as e:
         st.error(f"Không thể lưu: {e}")
 
-  # Lịch sử biến động
+  # -----------------------------------------------------------------------------------
+  # BẢNG LỊCH SỬ CHO PHÉP NHẤP CHUỘT TRỰC TIẾP VÀO DÒNG ĐỂ HỦY (CLICK TO SELECT)
+  # -----------------------------------------------------------------------------------
   st.divider()
-  st.markdown("##### 📋 Lịch sử biến động đã gửi")
+  st.markdown(
+      "##### 📋 Lịch sử biến động đã gửi (Nhấp chọn dòng để hủy đăng ký)"
+  )
   try:
     conn = psycopg2.connect(DB_URI)
     cur = conn.cursor()
@@ -429,6 +438,8 @@ def render_bien_dong_lich_day(session):
     conn.close()
 
     if rows:
+      import pandas as pd
+
       data_list = []
       for r in rows:
         ngay_f = (
@@ -436,42 +447,66 @@ def render_bien_dong_lich_day(session):
             if hasattr(r[2], "strftime")
             else str(r[2])
         )
-        data_list.append(
-            {
-                "ID": r[0],
-                "Loại việc": r[1],
-                "Ngày": ngay_f,
-                "Buổi": r[3],
-                "Tiết": r[4],
-                "Lớp": r[5],
-                "Môn/PM": r[6],
-                "GV Thay": r[7],
-                "Lý do": r[8],
-                "Trạng thái": r[9],
-            }
-        )
-      st.dataframe(data_list, use_container_width=True, hide_index=True)
+        data_list.append({
+            "ID": r[0],
+            "Loại việc": r[1],
+            "Ngày": ngay_f,
+            "Buổi": r[3],
+            "Tiết": r[4],
+            "Lớp": r[5],
+            "Môn/PM": r[6],
+            "GV Thay": r[7],
+            "Lý do": r[8],
+            "Trạng thái": r[9],
+        })
 
-      selected_id = st.number_input(
-          "Nhập ID biến động muốn hủy:", min_value=1, step=1, key="huy_id"
+      df_history = pd.DataFrame(data_list)
+
+      # Cho phép chọn duy nhất 1 dòng trong bảng
+      event = st.dataframe(
+          df_history,
+          use_container_width=True,
+          hide_index=True,
+          on_select="rerun",
+          selection_mode="single-row",
       )
-      if st.button(
-          "❌ Hủy Đăng Ký Theo ID", type="secondary", use_container_width=True
-      ):
-        try:
-          conn = psycopg2.connect(DB_URI)
-          cur = conn.cursor()
-          cur.execute(
-              "DELETE FROM bien_dong_lich_day WHERE id = %s AND magv = %s",
-              (int(selected_id), magv),
-          )
-          conn.commit()
-          cur.close()
-          conn.close()
-          st.success(f"Đã hủy thành công bản ghi ID {selected_id}!")
-          st.rerun()
-        except Exception as e:
-          st.error(f"Không thể hủy: {e}")
+
+      selected_rows = event.selection.rows if event else []
+
+      if selected_rows:
+        row_idx = selected_rows[0]
+        selected_record = df_history.iloc[row_idx]
+        rec_id = int(selected_record["ID"])
+        rec_loai = selected_record["Loại việc"]
+        rec_ngay = selected_record["Ngày"]
+
+        st.warning(
+            f"👉 Đang chọn: **[{rec_loai}]** ngày **{rec_ngay}** (ID:"
+            f" {rec_id})"
+        )
+
+        if st.button(
+            f"❌ Hủy Đăng Ký [{rec_loai} - {rec_ngay}]",
+            type="primary",
+            use_container_width=True,
+        ):
+          try:
+            conn = psycopg2.connect(DB_URI)
+            cur = conn.cursor()
+            cur.execute(
+                "DELETE FROM bien_dong_lich_day WHERE id = %s AND magv = %s",
+                (rec_id, magv),
+            )
+            conn.commit()
+            cur.close()
+            conn.close()
+            st.success(f"Đã hủy thành công đăng ký ID {rec_id}!")
+            st.rerun()
+          except Exception as e:
+            st.error(f"Không thể hủy: {e}")
+      else:
+        st.info("💡 Anh nhấp trực tiếp vào bất kỳ dòng nào trong bảng để chọn hủy đăng ký đó.")
+
     else:
       st.info("Chưa có lịch sử đăng ký biến động nào.")
   except Exception as e:
